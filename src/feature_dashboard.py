@@ -1,44 +1,19 @@
-from IPython.display import HTML, display
-import numpy as np
-import ipywidgets as widgets
-import urllib.parse
-from pathlib import Path
-from nnsight import LanguageModel
-from functools import cache
-import torch as th
-import ast
-
-import traceback
-from nnterp.nnsight_utils import get_layer, get_layer_output
-import einops
-
 import time
-import os
+import traceback
+from functools import lru_cache
+from pathlib import Path
+import urllib.parse
+import ipywidgets as widgets
+import numpy as np
+import torch as th
+from IPython.display import HTML, display
+
+from nnsight import LanguageModel
+from nnterp.nnsight_utils import get_layer, get_layer_output
+from .utils import *
 
 
-def parse_list_str(s: str) -> list[int]:
-    if not s.startswith("["):
-        s = "[" + s
-    if not s.endswith("]"):
-        s = s + "]"
-    return ast.literal_eval(s)
-
-
-def apply_chat(text: str, tokenizer, add_bos: bool = True) -> str:
-    """Apply chat formatting to text using the tokenizer"""
-    splitted = text.split("<eot>")
-    is_user = True
-    chat = []
-    for s in splitted:
-        role = "user" if is_user else "assistant"
-        chat.append({"role": role, "content": s})
-        is_user = not is_user
-    return tokenizer.apply_chat_template(
-        chat, tokenize=False, add_generation_prompt=True
-    )[0 if add_bos else 5 :]
-
-
-class FeatureCentricDashboard:
+class OfflineFeatureCentricDashboard:
     """
     This Dashboard is composed of a feature selector and a feature viewer.
     The feature selector allows you to select a feature and view the max activating examples for that feature.
@@ -73,14 +48,14 @@ class FeatureCentricDashboard:
             self.scripts = f.read()
         with open(template_dir / "base.html", "r") as f:
             self.base_template = f.read()
+        with open(template_dir / "feature_section.html", "r") as f:
+            self.feature_template = f.read()
         self._setup_widgets()
 
     def _setup_widgets(self):
         """Initialize the dashboard widgets"""
 
-        # Convert to list for easier validation
         self.available_features = sorted(self.max_activation_examples.keys())
-
         self.feature_selector = widgets.Text(
             placeholder="Type a feature number...",
             description="Feature:",
@@ -94,10 +69,7 @@ class FeatureCentricDashboard:
     def _handle_feature_selection(self, change):
         """Handle feature selection, including validation of typed input"""
         try:
-            # Try to convert input to integer
             feature_idx = int(change["new"])
-
-            # Validate feature exists
             if feature_idx in self.max_activation_examples:
                 self._update_examples({"new": feature_idx})
             else:
@@ -107,7 +79,6 @@ class FeatureCentricDashboard:
                         f"Feature {feature_idx} not found. Available features: {self.available_features}"
                     )
         except ValueError:
-            # Handle invalid input
             with self.examples_output:
                 self.examples_output.clear_output()
                 print("Please enter a valid feature number")
@@ -137,19 +108,12 @@ class FeatureCentricDashboard:
         norm_acts = act_array / max_act if max_act > 0 else act_array
 
         # Create HTML spans with activation values
+        tokens = sanitize_tokens(tokens)
         for i in range(start_idx, end_idx):
             act = activations[i]
             norm_act = norm_acts[i]
             # Double escape: First for HTML, then for JavaScript string
-            token = (
-                tokens[i]
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("'", "&apos;")
-                .replace('"', "&quot;")
-                .replace("\n", "\\n\n")
-            )
+            token = tokens[i]
 
             color = f"rgba(255, 0, 0, {abs(norm_act):.3f})"
 
@@ -177,6 +141,7 @@ class FeatureCentricDashboard:
         with self.examples_output:
             self.examples_output.clear_output()
 
+            content_parts = []
             for max_act, tokens, token_acts in list(examples)[: self.max_examples]:
                 # Find max activation index
                 max_idx = np.argmax(token_acts)
@@ -189,24 +154,30 @@ class FeatureCentricDashboard:
                     tokens, token_acts, max_idx, True
                 )
 
-                # Escape full_html to prevent rendering issues
-                # full_html = full_html.replace("<", "&lt;").replace(">", "&gt;")
-                # print(f"full_html: {full_html}\nPartial: {collapsed_html}")
-                display(
-                    HTML(
-                        f"""
-                <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
-                    <p style="margin: 0 0 2px 0;"><b>Max Activation: {max_act:.2f}</b></p>
-                    <div class="text-sample" style="white-space: pre-wrap;" 
-                         onclick="this.innerHTML=decodeURIComponent(this.dataset.fullText); setupTokenTooltips();" 
-                         data-full-text="{urllib.parse.quote(full_html)}">
-                        {collapsed_html}
+                content_parts.append(
+                    f"""
+                    <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
+                        <p style="margin: 0 0 2px 0;"><b>Max Activation: {max_act:.2f}</b></p>
+                        <div class="text-sample" style="white-space: pre-wrap;" 
+                             onclick="this.innerHTML=decodeURIComponent(this.dataset.fullText); setupTokenTooltips();" 
+                             data-full-text="{urllib.parse.quote(full_html)}">
+                            {collapsed_html}
+                        </div>
+                        <p style="color: gray; font-size: 0.8em; margin: 5px 0 0 0;">Click to expand</p>
                     </div>
-                    <p style="color: gray; font-size: 0.8em; margin: 5px 0 0 0;">Click to expand</p>
-                </div>
                 """
-                    )
                 )
+
+            html_content = (
+                self.base_template.replace(
+                    "{{title}}", f"Feature {feature_idx} Examples"
+                )
+                .replace("{{content}}", "\n".join(content_parts))
+                .replace("{{styles}}", self.styles)
+                .replace("{{scripts}}", self.scripts)
+            )
+
+            display(HTML(html_content))
 
     def display(self):
         """Display the dashboard"""
@@ -224,9 +195,6 @@ class FeatureCentricDashboard:
 
         for feature_idx in features_to_export:
             examples = self.max_activation_examples[feature_idx]
-            content_parts.append(
-                f'<div class="feature-section"><h2>Feature {feature_idx}</h2>'
-            )
 
             for max_act, tokens, token_acts in examples:
                 max_idx = np.argmax(token_acts)
@@ -235,23 +203,17 @@ class FeatureCentricDashboard:
                 )
 
                 content_parts.append(
-                    f"""
-                    <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
-                        <p style="margin: 0 0 2px 0;"><b>Max Activation: {max_act:.2f}</b></p>
-                        <div class="text-sample" style="white-space: pre-wrap;">
-                            {full_html}
-                        </div>
-                    </div>
-                """
+                    self.feature_template.replace("{{feature_idx}}", str(feature_idx))
+                    .replace("{{max_activation}}", f"{max_act:.2f}")
+                    .replace("{{full_html}}", full_html)
                 )
-
-            content_parts.append("</div>")
 
         # Replace placeholders in base template
         html_content = (
             self.base_template.replace("{{content}}", "\n".join(content_parts))
             .replace("{{styles}}", self.styles)
             .replace("{{scripts}}", self.scripts)
+            .replace("{{title}}", f"Feature Dashboard")
         )
 
         # Create output directory and write file
@@ -298,6 +260,8 @@ class OnlineFeatureCentricDashboard:
             self.styles = f.read()
         with open(template_dir / "tooltips.js", "r") as f:
             self.scripts = f.read()
+        with open(template_dir / "base.html", "r") as f:
+            self.base_template = f.read()
 
         self.current_html = None  # Store the current HTML output
 
@@ -369,7 +333,7 @@ class OnlineFeatureCentricDashboard:
         )
         self.save_button.on_click(self._handle_save)
 
-    @cache
+    @lru_cache
     @th.no_grad
     def get_feature_activation(
         self, text: str, feature_indicies: tuple[int, ...]
@@ -416,17 +380,8 @@ class OnlineFeatureCentricDashboard:
         norm_acts = highlight_acts / (max_highlight + 1e-6)
 
         # Create HTML spans with activation values
-        for i in range(len(tokens)):
-            token = (
-                tokens[i]
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("'", "&apos;")
-                .replace('"', "&quot;")
-                .replace("\n", "\\n\n")
-                .replace("▁", " ")
-            )
+        tokens = sanitize_tokens(tokens)
+        for i, token in enumerate(tokens):
 
             color = f"rgba(255, 0, 0, {norm_acts[i].item():.3f})"
 
@@ -549,39 +504,38 @@ class OnlineFeatureCentricDashboard:
                 self.output_area.clear_output()
                 traceback.print_exc()
 
-    def _handle_save(self, _):
-        """Handle saving the current HTML output"""
+    def save_html(self, save_path: Path | None = None, filename: str | None = None):
         if self.current_html is None:
             return
 
         # Create directory if it doesn't exist
-        save_dir = Path("results") / "features"
-        save_dir.mkdir(parents=True, exist_ok=True)
+        if save_path is None:
+            save_path = Path("results") / "features"
+        save_path.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
-        timestamp = int(time.time())
-        filename = save_dir / str(self.feature_to_highlight) / f"{timestamp}.html"
-        filename.parent.mkdir(parents=True, exist_ok=True)
+        if filename is None:
+            timestamp = int(time.time())
+            filename = save_path / str(self.feature_to_highlight) / f"{timestamp}.html"
+        else:
+            filename = save_path / filename
         # Write the HTML file
         with open(filename, "w", encoding="utf-8") as f:
-            f.write(
-                f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Feature Analysis - {timestamp}</title>
-    <style>{self.styles}</style>
-    <script>{self.scripts}</script>
-</head>
-<body>
-    {self.current_html}
-    <script>setupTokenTooltips();</script>
-</body>
-</html>
-"""
+            html_content = (
+                self.base_template.replace("{{title}}", f"Feature Analysis")
+                .replace(
+                    "{{content}}",
+                    self.current_html,
+                )
+                .replace("{{styles}}", self.styles)
+                .replace("{{scripts}}", self.scripts)
             )
+            f.write(html_content)
         print(f"Saved analysis to {filename}")
+
+    def _handle_save(self, _):
+        """Handle saving the current HTML output"""
+        self.save_html()
 
     def display(self):
         """Display the dashboard"""
