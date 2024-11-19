@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+
+[project]
+dynamic = ["version"]
+name = "tiny-activation-dashboard"
+authors = [
+  { name = "Clément Dumas", email = "butanium.contact@gmail.com" },
+]
+description = "A tool for visualizing and exploring feature activations in neural language models."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "nnterp",
+    "ipywidgets",   
+]
+
+
+[project.urls]
+"Homepage" = "https://github.com/butanium/tiny-activation-dashboard"

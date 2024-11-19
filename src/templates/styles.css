@@ -20,4 +20,8 @@
     margin: 20px 0;
     padding: 10px;
     border: 1px solid #ccc;
-} 
+}
+.text-sample {
+    word-wrap: break-word; /* Allows long words to break and wrap onto the next line */
+    overflow-wrap: break-word; /* Ensures compatibility with different browsers */
+}

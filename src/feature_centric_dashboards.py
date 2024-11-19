@@ -1,16 +1,22 @@
 import time
 import traceback
-from functools import lru_cache
+import warnings
 from pathlib import Path
-import urllib.parse
 import ipywidgets as widgets
 import numpy as np
 import torch as th
 from IPython.display import HTML, display
+from abc import ABC, abstractmethod
+from typing import Callable
 
+from transformers import AutoTokenizer
 from nnsight import LanguageModel
-from nnterp.nnsight_utils import get_layer, get_layer_output
-from .utils import *
+from .utils import sanitize_tokens, apply_chat, parse_list_str, DummyModel
+from .html_utils import (
+    create_example_html,
+    create_base_html,
+    create_token_html,
+)
 
 
 class OfflineFeatureCentricDashboard:
@@ -41,15 +47,7 @@ class OfflineFeatureCentricDashboard:
         self.window_size = window_size
         self.max_examples = max_examples
         # Load templates at initialization
-        template_dir = Path(__file__).parent / "templates"
-        with open(template_dir / "styles.css", "r") as f:
-            self.styles = f.read()
-        with open(template_dir / "tooltips.js", "r") as f:
-            self.scripts = f.read()
-        with open(template_dir / "base.html", "r") as f:
-            self.base_template = f.read()
-        with open(template_dir / "feature_section.html", "r") as f:
-            self.feature_template = f.read()
+
         self._setup_widgets()
 
     def _setup_widgets(self):
@@ -90,10 +88,7 @@ class OfflineFeatureCentricDashboard:
         max_idx: int,
         show_full: bool = False,
     ) -> str:
-        html_parts = [
-            f"<style>{self.styles}</style>",
-            f"<script>{self.scripts}</script>",
-        ]
+        html_parts = []
         # Determine window bounds
         if show_full:
             start_idx = 0
@@ -112,72 +107,48 @@ class OfflineFeatureCentricDashboard:
         for i in range(start_idx, end_idx):
             act = activations[i]
             norm_act = norm_acts[i]
-            # Double escape: First for HTML, then for JavaScript string
             token = tokens[i]
-
             color = f"rgba(255, 0, 0, {abs(norm_act):.3f})"
-
-            # Create tooltip content with token ID, string, and activation
             tok_id = self.tokenizer.convert_tokens_to_ids(tokens[i])
             tooltip_content = f"Token {tok_id}: '{token}'\nActivation: {act:.3f}"
-            tooltip_content = tooltip_content.replace('"', "&quot;")
-
-            html_parts.append(
-                f'<span class="token" style="background-color: {color};" '
-                f'data-tooltip="{tooltip_content}">{token}</span>'
-            )
-
-        if end_idx < len(tokens):
-            html_parts.append('<span style="color: gray;">...</span>')
+            html_parts.append(create_token_html(token, color, tooltip_content))
 
         return "".join(html_parts)
 
-    def _update_examples(self, change):
-        """Update the examples display when a new feature is selected"""
-
-        feature_idx = change["new"]
+    def generate_html(self, feature_idx: int) -> str:
         examples = self.max_activation_examples[feature_idx]
 
-        with self.examples_output:
-            self.examples_output.clear_output()
+        content_parts = []
+        for max_act, tokens, token_acts in list(examples)[: self.max_examples]:
+            max_idx = np.argmax(token_acts)
 
-            content_parts = []
-            for max_act, tokens, token_acts in list(examples)[: self.max_examples]:
-                # Find max activation index
-                max_idx = np.argmax(token_acts)
+            # Create both versions
+            collapsed_html = self._create_html_highlight(
+                tokens, token_acts, max_idx, False
+            )
+            full_html = self._create_html_highlight(tokens, token_acts, max_idx, True)
 
-                # Create both collapsed and full versions
-                collapsed_html = self._create_html_highlight(
-                    tokens, token_acts, max_idx, False
-                )
-                full_html = self._create_html_highlight(
-                    tokens, token_acts, max_idx, True
-                )
-
-                content_parts.append(
-                    f"""
-                    <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
-                        <p style="margin: 0 0 2px 0;"><b>Max Activation: {max_act:.2f}</b></p>
-                        <div class="text-sample" style="white-space: pre-wrap;" 
-                             onclick="this.innerHTML=decodeURIComponent(this.dataset.fullText); setupTokenTooltips();" 
-                             data-full-text="{urllib.parse.quote(full_html)}">
-                            {collapsed_html}
-                        </div>
-                        <p style="color: gray; font-size: 0.8em; margin: 5px 0 0 0;">Click to expand</p>
-                    </div>
-                """
-                )
-
-            html_content = (
-                self.base_template.replace(
-                    "{{title}}", f"Feature {feature_idx} Examples"
-                )
-                .replace("{{content}}", "\n".join(content_parts))
-                .replace("{{styles}}", self.styles)
-                .replace("{{scripts}}", self.scripts)
+            content_parts.append(
+                create_example_html(max_act, collapsed_html, full_html)
             )
 
-            display(HTML(html_content))
+        # Display the HTML content all at once
+        html_content = create_base_html(
+            title=f"Feature {feature_idx} Examples",
+            content=content_parts,
+        )
+        return html_content
+
+    def _update_examples(self, change):
+        """Update the examples display when a new feature is selected"""
+        # Clear the output first
+        self.examples_output.clear_output(
+            wait=True
+        )  # wait=True for smoother transition
+
+        feature_idx = change["new"]
+        with self.examples_output:
+            display(HTML(self.generate_html(feature_idx)))
 
     def display(self):
         """Display the dashboard"""
@@ -185,36 +156,12 @@ class OfflineFeatureCentricDashboard:
         dashboard = widgets.VBox([self.feature_selector, self.examples_output])
         display(dashboard)
 
-    def export_to_html(self, output_path: str, features_to_export: list[int]):
+    def export_to_html(self, output_path: str, feature_to_export: int):
         """
         Export the dashboard data to a static HTML file.
         Creates a single self-contained HTML file with embedded CSS and JavaScript.
         """
-        # Generate content
-        content_parts = []
-
-        for feature_idx in features_to_export:
-            examples = self.max_activation_examples[feature_idx]
-
-            for max_act, tokens, token_acts in examples:
-                max_idx = np.argmax(token_acts)
-                full_html = self._create_html_highlight(
-                    tokens, token_acts, max_idx, True
-                )
-
-                content_parts.append(
-                    self.feature_template.replace("{{feature_idx}}", str(feature_idx))
-                    .replace("{{max_activation}}", f"{max_act:.2f}")
-                    .replace("{{full_html}}", full_html)
-                )
-
-        # Replace placeholders in base template
-        html_content = (
-            self.base_template.replace("{{content}}", "\n".join(content_parts))
-            .replace("{{styles}}", self.styles)
-            .replace("{{scripts}}", self.scripts)
-            .replace("{{title}}", f"Feature Dashboard")
-        )
+        html_content = self.generate_html(feature_to_export)
 
         # Create output directory and write file
         output_dir = Path(output_path).parent
@@ -224,48 +171,47 @@ class OfflineFeatureCentricDashboard:
             f.write(html_content)
 
 
-class OnlineFeatureCentricDashboard:
+class AbstractOnlineFeatureCentricDashboard(ABC):
     """
-    This Dashboard allows real-time analysis of text for specific features.
+    Abstract base class for real-time feature analysis dashboards.
     Users can input text, select a feature, and see the activation patterns
-    highlighted directly in the text with the same visualization style as
-    the FeatureCentricDashboard.
+    highlighted directly in the text.
     """
 
     def __init__(
         self,
-        base_model: LanguageModel,
-        instruct_model: LanguageModel,
-        crosscoder,
-        collect_layer: int,
+        tokenizer: AutoTokenizer,
+        model: LanguageModel | None = None,
         window_size: int = 50,
-        crosscoder_device: str | None = None,
     ):
-        """
-        Args:
-            model: nnsight LanguageModel
-            window_size: Number of tokens to show before/after the max activation token
-        """
-        self.tokenizer = instruct_model.tokenizer
-        self.instruct_model = instruct_model
-        self.base_model = base_model
-        self.crosscoder = crosscoder
-        self.crosscoder_device = crosscoder_device
-        self.layer = collect_layer
+        self.tokenizer = tokenizer
+        self.model = model
         self.window_size = window_size
         self.use_chat_formatting = False
-        # Load templates
-        template_dir = Path(__file__).parent / "templates"
-        with open(template_dir / "styles.css", "r") as f:
-            self.styles = f.read()
-        with open(template_dir / "tooltips.js", "r") as f:
-            self.scripts = f.read()
-        with open(template_dir / "base.html", "r") as f:
-            self.base_template = f.read()
-
-        self.current_html = None  # Store the current HTML output
-
+        self.current_html = None
         self._setup_widgets()
+
+    @abstractmethod
+    def get_feature_activation(
+        self, text: str, feature_indicies: tuple[int, ...]
+    ) -> th.Tensor:
+        """Get the activation values for given features
+        Args:
+            text: Input text
+            feature_indicies: Indices of features to compute
+        Returns:
+            Activation values for the given features as a tensor of shape (seq_len, num_features)
+        """
+        pass
+
+    @th.no_grad
+    def generate_model_response(self, text: str) -> str:
+        """Generate model's response using the instruct model"""
+        if self.model is None:
+            raise ValueError("Model is not set")
+        with self.model.generate(text, max_new_tokens=512):
+            output = self.model.generator.output.save()
+        return self.tokenizer.decode(output[0])
 
     def _setup_widgets(self):
         """Initialize the dashboard widgets"""
@@ -273,7 +219,9 @@ class OnlineFeatureCentricDashboard:
             placeholder="Enter text to analyze...",
             description="Text:",
             layout=widgets.Layout(
-                width="800px", height="100px", font_family="sans-serif"
+                width="100%",  # Changed from 800px to 100%
+                height="auto",
+                font_family="sans-serif",
             ),
             style={"description_width": "initial"},
         )
@@ -292,10 +240,11 @@ class OnlineFeatureCentricDashboard:
             description="Highlight feature:",
             continuous_update=False,
             style={"description_width": "initial"},
+            layout=widgets.Layout(width="310px"),
         )
 
         self.tooltip_features = widgets.Text(
-            placeholder="Enter features to show in tooltip [1,2,3]",
+            placeholder="Enter features to show in tooltip e.g. 1,2,3",
             description="Tooltip features:",
             continuous_update=False,
             style={"description_width": "initial"},
@@ -304,6 +253,12 @@ class OnlineFeatureCentricDashboard:
         self.analyze_button = widgets.Button(
             description="Analyze",
             button_style="primary",
+            layout=widgets.Layout(
+                min_width="100px",  # Ensure minimum width
+                width="auto",  # Allow button to grow if needed
+                text_overflow="clip",
+                overflow="visible",
+            ),
         )
 
         self.output_area = widgets.Output()
@@ -324,6 +279,9 @@ class OnlineFeatureCentricDashboard:
             indent=False,
             style={"description_width": "initial"},
         )
+        if self.model is None:
+            print("Model is not set, disabling generate response checkbox")
+            self.generate_response.disabled = True
 
         # Add save button
         self.save_button = widgets.Button(
@@ -333,30 +291,13 @@ class OnlineFeatureCentricDashboard:
         )
         self.save_button.on_click(self._handle_save)
 
-    @lru_cache
-    @th.no_grad
-    def get_feature_activation(
-        self, text: str, feature_indicies: tuple[int, ...]
-    ) -> th.Tensor:
-        """Get the activation values for a given feature"""
-        with self.instruct_model.trace(text):
-            instruct_activations = get_layer_output(self.instruct_model, self.layer)[
-                0
-            ].save()
-            get_layer(self.instruct_model, self.layer).output.stop()
-        with self.base_model.trace(text):
-            base_activations = get_layer_output(self.base_model, self.layer)[0].save()
-            get_layer(self.base_model, self.layer).output.stop()
-        if self.crosscoder_device is not None:
-            base_activations = base_activations.to(self.crosscoder_device)
-            instruct_activations = instruct_activations.to(self.crosscoder_device)
-        cc_input = th.stack(
-            [base_activations, instruct_activations], dim=1
-        ).float()  # seq, 2, d
-        features_acts = self.crosscoder.get_activations(
-            cc_input, select_features=list(feature_indicies)
-        )  # seq, f
-        return features_acts
+        # Set layout for checkbox widgets to be more compact
+        self.chat_formatting.layout = widgets.Layout(
+            width="auto", display="inline-flex"
+        )
+        self.generate_response.layout = widgets.Layout(
+            width="auto", display="inline-flex"
+        )
 
     def _create_html_highlight(
         self,
@@ -367,10 +308,7 @@ class OnlineFeatureCentricDashboard:
         tooltip_features: list[int],
     ) -> str:
         """Create HTML with highlighted tokens based on activation values"""
-        html_parts = [
-            f"<style>{self.styles}</style>",
-            f"<script>{self.scripts}</script>",
-        ]
+        html_parts = []
 
         # Find highlight feature index in the activation tensor
         highlight_idx = all_feature_indicies.index(highlight_feature_idx)
@@ -380,7 +318,7 @@ class OnlineFeatureCentricDashboard:
         norm_acts = highlight_acts / (max_highlight + 1e-6)
 
         # Create HTML spans with activation values
-        tokens = sanitize_tokens(tokens)
+        tokens = sanitize_tokens(tokens, non_breaking_space=False)
         for i, token in enumerate(tokens):
 
             color = f"rgba(255, 0, 0, {norm_acts[i].item():.3f})"
@@ -393,21 +331,10 @@ class OnlineFeatureCentricDashboard:
                 act_value = activations[i, feat_idx].item()
                 tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
 
-            tooltip_content = "\n".join(tooltip_lines).replace('"', "&quot;")
-
-            html_parts.append(
-                f'<span class="token" style="background-color: {color};" '
-                f'data-tooltip="{tooltip_content}">{token}</span>'
-            )
+            tooltip_content = "\n".join(tooltip_lines)
+            html_parts.append(create_token_html(token, color, tooltip_content))
 
         return "".join(html_parts)
-
-    @th.no_grad
-    def generate_model_response(self, text: str) -> str:
-        """Generate model's response to the input text"""
-        with self.instruct_model.generate(text, max_new_tokens=512):
-            output = self.instruct_model.generator.output.save()
-        return self.tokenizer.decode(output[0])
 
     def _handle_analysis(self, _):
         """Handle the analysis button click"""
@@ -433,6 +360,9 @@ class OnlineFeatureCentricDashboard:
                     0, highlight_feature
                 )  # Add highlight feature as first
             text = self.text_input.value
+            if text == "":
+                print("No text to analyze")
+                return
             if self.chat_formatting.value:
                 text = apply_chat(
                     text,
@@ -442,7 +372,9 @@ class OnlineFeatureCentricDashboard:
             tokens = self.tokenizer.tokenize(text, add_special_tokens=True)
             if self.generate_response.value:
                 # Generate and append model's response
-                full_response = self.generate_model_response(text)[5:]
+                if text.startswith(self.tokenizer.bos_token):
+                    text = text[len(self.tokenizer.bos_token) :]
+                full_response = self.generate_model_response(text)
                 text = full_response
                 tokens = self.tokenizer.tokenize(text, add_special_tokens=True)
 
@@ -463,7 +395,7 @@ class OnlineFeatureCentricDashboard:
 
                 max_acts_display = (
                     "<div style='margin-bottom: 10px'><b>"
-                    + " | ".join(max_acts_html)
+                    + "<br>".join(max_acts_html)
                     + "</b></div>"
                 )
 
@@ -474,17 +406,13 @@ class OnlineFeatureCentricDashboard:
                     highlight_feature,
                     tooltip_features,
                 )
+                example_html = create_example_html(
+                    max_acts_display, html_content, static=True
+                )
 
-                # Store the complete HTML for saving
-                self.current_html = f"""
-                    <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
-                        {max_acts_display}
-                        <div class="text-sample" style="white-space: pre-wrap;">
-                            {html_content}
-                        </div>
-                    </div>
-                """
-
+                self.current_html = create_base_html(
+                    title="Feature Analysis", content=example_html
+                )
                 # Enable the save button now that we have content
                 self.save_button.disabled = False
 
@@ -521,14 +449,9 @@ class OnlineFeatureCentricDashboard:
             filename = save_path / filename
         # Write the HTML file
         with open(filename, "w", encoding="utf-8") as f:
-            html_content = (
-                self.base_template.replace("{{title}}", f"Feature Analysis")
-                .replace(
-                    "{{content}}",
-                    self.current_html,
-                )
-                .replace("{{styles}}", self.styles)
-                .replace("{{scripts}}", self.scripts)
+            html_content = create_base_html(
+                title=f"Feature Analysis",
+                content=self.current_html,
             )
             f.write(html_content)
         print(f"Saved analysis to {filename}")
@@ -539,21 +462,106 @@ class OnlineFeatureCentricDashboard:
 
     def display(self):
         """Display the dashboard"""
+        # Create two separate grid layouts - one for inputs, one for buttons
+        inputs_layout = widgets.HBox(
+            children=[
+                self.feature_input,
+                self.highlight_feature,
+                self.tooltip_features,
+            ],
+            layout=widgets.Layout(
+                display="flex",
+                flex_flow="row wrap",
+                gap="20px",
+                width="100%",
+                margin="0 0 10px 0",
+                align_items="flex-start",
+            ),
+        )
+
+        buttons_layout = widgets.HBox(
+            children=[
+                widgets.Box(
+                    children=[self.analyze_button],
+                    layout=widgets.Layout(margin="0 20px 0 0"),
+                ),  # Right margin
+                widgets.Box(
+                    children=[self.chat_formatting],
+                    layout=widgets.Layout(margin="0 20px 0 0"),
+                ),  # Right margin
+                widgets.Box(
+                    children=[self.generate_response],
+                    layout=widgets.Layout(margin="0 20px 0 0"),
+                ),  # Right margin
+                self.save_button,  # No margin needed for the last button
+            ],
+            layout=widgets.Layout(
+                display="flex",
+                flex_flow="row wrap",
+                justify_content="flex-start",  # Align items to the start
+                align_items="center",
+                width="auto",  # Changed from 100% to auto
+            ),
+        )
+
+        # Create the dashboard layout
         dashboard = widgets.VBox(
             [
-                widgets.HBox([self.text_input]),
-                widgets.HBox(
-                    [
-                        self.feature_input,
-                        self.highlight_feature,
-                        self.tooltip_features,
-                        self.analyze_button,
-                        self.chat_formatting,
-                        self.generate_response,
-                        self.save_button,  # Add the save button
-                    ]
-                ),
+                self.text_input,
+                inputs_layout,
+                buttons_layout,
                 self.output_area,
-            ]
+            ],
+            layout=widgets.Layout(
+                width="100%", overflow="visible"
+            ),  # Allow overflow to be visible
         )
         display(dashboard)
+
+
+class OnlineFeatureCentricDashboard(AbstractOnlineFeatureCentricDashboard):
+    """Implementation of AbstractOnlineFeatureCentricDashboard using functions
+    given as arguments to the constructor"""
+
+    def __init__(
+        self,
+        get_feature_activation: Callable[[str, tuple[int, ...]], th.Tensor],
+        tokenizer: AutoTokenizer,
+        generate_model_response: Callable[[str], str] | None = None,
+        call_with_self: bool = False,
+        model: LanguageModel | None = None,
+        window_size: int = 50,
+        **kwargs,
+    ):
+        """
+        Args:
+            get_feature_activation: Function to compute feature activations
+            tokenizer: HuggingFace tokenizer for the model
+            generate_model_response: Optional function to generate model's response
+            call_with_self: Whether to call the functions with self as the first argument
+            model: LanguageModel instance
+            window_size: Number of tokens to show before/after the max activation token
+        """
+        self.call_with_self = call_with_self
+        if generate_model_response is not None and model is None:
+            model = DummyModel()
+            warnings.warn(
+                "Model is not set, using DummyModel as a placeholder to allow for response generation using your custom function"
+            )
+        super().__init__(tokenizer, model, window_size, **kwargs)
+        self._get_feature_activation = get_feature_activation
+        self._generate_model_response = generate_model_response
+
+    def get_feature_activation(
+        self, text: str, feature_indices: tuple[int, ...]
+    ) -> th.Tensor:
+        if self.call_with_self:
+            return self._get_feature_activation(self, text, feature_indices)
+        return self._get_feature_activation(text, feature_indices)
+
+    def generate_model_response(self, text: str) -> str:
+        if self._generate_model_response is None:
+            return super().generate_model_response(text)
+        if self.call_with_self:
+            return self._generate_model_response(self, text)
+        return self._generate_model_response(text)
