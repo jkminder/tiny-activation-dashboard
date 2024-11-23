@@ -20,7 +20,7 @@ def apply_chat(text: str, tokenizer, add_bos: bool = True) -> str:
         chat.append({"role": role, "content": s})
         is_user = not is_user
     return tokenizer.apply_chat_template(
-        chat, tokenize=False, add_generation_prompt=True
+        chat, tokenize=False, add_generation_prompt=not is_user
     )[0 if add_bos else len(tokenizer.bos_token) :]
 
 
