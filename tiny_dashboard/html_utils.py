@@ -75,7 +75,6 @@ def create_feature_section_html(
 
 def create_token_html(token: str, color: str, tooltip_content: str) -> str:
     """Create HTML for a single token span with tooltip."""
-    tooltip_content = sanitize_html_content(tooltip_content)
     return update_template_string(
         token_template,
         {

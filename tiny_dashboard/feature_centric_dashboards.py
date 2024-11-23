@@ -11,7 +11,7 @@ from typing import Callable
 
 from transformers import AutoTokenizer
 from nnsight import LanguageModel
-from .utils import sanitize_tokens, apply_chat, parse_list_str, DummyModel
+from .utils import sanitize_tokens, apply_chat, parse_list_str, DummyModel, sanitize_token
 from .html_utils import (
     create_example_html,
     create_base_html,
@@ -103,14 +103,15 @@ class OfflineFeatureCentricDashboard:
         norm_acts = act_array / max_act if max_act > 0 else act_array
 
         # Create HTML spans with activation values
-        tokens = sanitize_tokens(tokens)
+        sanitized_tokens = sanitize_tokens(tokens)
         for i in range(start_idx, end_idx):
             act = activations[i]
             norm_act = norm_acts[i]
-            token = tokens[i]
+            token = sanitized_tokens[i]
+            token_tooltip = sanitize_token(tokens[i], keep_newline=False, non_breaking_space=False)
             color = f"rgba(255, 0, 0, {abs(norm_act):.3f})"
             tok_id = self.tokenizer.convert_tokens_to_ids(tokens[i])
-            tooltip_content = f"Token {tok_id}: '{token}'\nActivation: {act:.3f}"
+            tooltip_content = f"Token {tok_id}: '{token_tooltip}'\nActivation: {act:.3f}"
             html_parts.append(create_token_html(token, color, tooltip_content))
 
         return "".join(html_parts)
@@ -318,21 +319,22 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         norm_acts = highlight_acts / (max_highlight + 1e-6)
 
         # Create HTML spans with activation values
-        tokens = sanitize_tokens(tokens, non_breaking_space=False)
-        for i, token in enumerate(tokens):
+        sanitized_tokens = sanitize_tokens(tokens, non_breaking_space=False)
+        for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
 
             color = f"rgba(255, 0, 0, {norm_acts[i].item():.3f})"
 
             # Create tooltip content only for requested features
-            tok_id = self.tokenizer.convert_tokens_to_ids(tokens[i])
-            tooltip_lines = [f"Token {tok_id}: '{token}'"]
+            tok_id = self.tokenizer.convert_tokens_to_ids(token)
+            tooltip_token = sanitize_token(token, keep_newline=False, non_breaking_space=False)
+            tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
             for feat in tooltip_features:
                 feat_idx = all_feature_indicies.index(feat)
                 act_value = activations[i, feat_idx].item()
                 tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
 
             tooltip_content = "\n".join(tooltip_lines)
-            html_parts.append(create_token_html(token, color, tooltip_content))
+            html_parts.append(create_token_html(san_token, color, tooltip_content))
 
         return "".join(html_parts)
 

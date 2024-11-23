@@ -15,13 +15,18 @@ def apply_chat(text: str, tokenizer, add_bos: bool = True) -> str:
     splitted = text.split("<eot>")
     is_user = True
     chat = []
-    for s in splitted:
+    for s in splitted[:-1]:
         role = "user" if is_user else "assistant"
         chat.append({"role": role, "content": s})
         is_user = not is_user
-    return tokenizer.apply_chat_template(
-        chat, tokenize=False, add_generation_prompt=not is_user
+    if is_user:
+        chat.append({"role": "user", "content": splitted[-1]})
+    formated_chat = tokenizer.apply_chat_template(
+        chat, tokenize=False, add_generation_prompt=True
     )[0 if add_bos else len(tokenizer.bos_token) :]
+    if not is_user:
+        formated_chat += splitted[-1]
+    return formated_chat
 
 
 def sanitize_html_content(s: str) -> str:
@@ -37,18 +42,23 @@ def sanitize_html_content(s: str) -> str:
     )
 
 
-def sanitize_token(token: str, non_breaking_space: bool = True) -> str:
+def sanitize_token(
+    token: str, non_breaking_space: bool = True, keep_newline: bool = True
+) -> str:
     return (
         sanitize_html_content(token)
-        .replace("\n", "\\n\n")
+        .replace("Ċ", "\n")
+        .replace("\n", "\\n<br>" if keep_newline else "\\n")
         .replace("▁", " ")
         .replace("Ġ", " ")
         .replace(" ", "&nbsp;" if non_breaking_space else " ")
     )
 
 
-def sanitize_tokens(tokens: list[str], non_breaking_space: bool = True) -> list[str]:
-    return [sanitize_token(t, non_breaking_space) for t in tokens]
+def sanitize_tokens(
+    tokens: list[str], non_breaking_space: bool = True, keep_newline: bool = True
+) -> list[str]:
+    return [sanitize_token(t, non_breaking_space, keep_newline) for t in tokens]
 
 
 def update_string(s: str, str_map: dict[str, str]) -> str:
