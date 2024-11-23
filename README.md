@@ -1,4 +1,5 @@
-# Feature-Centric Dashboards: Exploring Activations
+# Tiny Activation Dashboard
+A tiny easily hackable implementation of a feature dashboard.
 
 ## Overview
 
