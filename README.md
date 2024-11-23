@@ -92,6 +92,30 @@ online_dashboards = OnlineFeatureCentricDashboard(
 online_dashboards.display()
 ```
 
+### Specialized Implementations
+
+The package includes several specialized dashboard implementations in `dashboard_implementations.py`:
+
+#### CrosscoderOnlineFeatureDashboard
+For analyzing features using a crosscoder model that combines base and instruct model activations:
+
+```python
+from tiny_dashboard.dashboard_implementations import CrosscoderOnlineFeatureDashboard
+
+base_model, instruct_model, crosscoder = ...
+collect_layer = 12
+
+dashboard = CrosscoderOnlineFeatureDashboard(
+    base_model=base_model,
+    instruct_model=instruct_model,
+    crosscoder=crosscoder,
+    collect_layer=collect_layer,
+    crosscoder_device="cuda"  # optional, use it if the crosscoder is on a different device than the base and instruct models
+)
+dashboard.display()
+```
+
+Additional specialized implementations can be found in the `dashboard_implementations.py` file. Feel free to contribute new implementations!
 
 ## Example Workflow
 
@@ -107,6 +131,7 @@ The repository is organized as follows:
 - `demo.ipynb`: A Jupyter notebook containing minimal examples demonstrating how to use both offline and online dashboards
 - `src/`: Main package directory
   - `feature_centric_dashboards.py`: Core implementation of the dashboard classes (OfflineFeatureCentricDashboard, OnlineFeatureCentricDashboard, and AbstractOnlineFeatureCentricDashboard)
+  - `dashboard_implementations.py`: Collection of specialized dashboard implementations (e.g., CrosscoderOnlineFeatureDashboard)
   - `html_utils.py`: Utility functions for generating HTML elements using templates
   - `utils.py`: General utility functions for text processing and HTML sanitization
   - `templates/`: HTML, CSS, and JavaScript templates
