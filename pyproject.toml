@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 dynamic = ["version"]
-name = "tiny-activation-dashboard"
+name = "tiny-dashboard"
 authors = [
   { name = "Clément Dumas", email = "butanium.contact@gmail.com" },
 ]
