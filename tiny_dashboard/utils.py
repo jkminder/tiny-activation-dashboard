@@ -1,4 +1,6 @@
 import ast
+import sqlite3
+import json
 
 
 def parse_list_str(s: str) -> list[int]:
@@ -92,3 +94,37 @@ class DummyModel:
         raise ValueError(
             "Attempted to call a DummyModel instance, which is intended solely as a placeholder."
         )
+
+
+class LazyReadDict:
+    def __init__(self, db_path, column_name: str):
+        self.db_path = db_path
+        self.column_name = column_name
+        self._init_keys()
+
+    def _init_keys(self):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key FROM data_table")
+            self._keys = [row[0] for row in cursor.fetchall()]
+
+    def __getitem__(self, key):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT {self.column_name} FROM data_table WHERE key = ?", (key,)
+            )
+            rows = cursor.fetchall()
+
+            if not rows:
+                raise KeyError(key)
+
+            if len(rows) > 1:
+                raise ValueError(f"Multiple entries found for key {key}")
+            return json.loads(rows[0][0])
+
+    def keys(self):
+        return self._keys
+
+    def __contains__(self, key):
+        return key in self._keys

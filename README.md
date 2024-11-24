@@ -29,6 +29,9 @@ Both the offline and online dashboards include:
 - Expandable text views
 - Generate interactive HTML reports
 
+You can either store the max activation examples in a database file, or in a python dictionary.
+
+#### A. Using a python dictionary
 
 ```py
 from tiny_dashboard.feature_centric_dashboards import OfflineFeatureCentricDashboard
@@ -44,6 +47,23 @@ dashboard.display()
 feature_to_export = 0
 dashboard.export_to_html("feature_analysis.html", feature_to_export)
 ```
+
+#### B. Using a database file
+For larger datasets, you can store your max activation examples in a `sqlite3` database. This allows you to avoid loading all the examples into memory.
+The database should contain a table with:
+
+- A primary key column of type INTEGER
+- A column storing lists of examples as a JSON string, where each example is a tuple containing:
+  - max_activation_value (`float`): The highest activation value
+  - tokens (`list[str]`): The sequence of tokens
+  - activation_values (`list[float]`): The activation value for each token
+
+```py
+dashboard = OfflineFeatureCentricDashboard.from_db("path/to/db.db", tokenizer, column_name="column_name_of_examples")
+dashboard.display()
+```
+
+Check [demo.ipynb](demo.ipynb) for an example on how to build such a database from a python dictionary.
 
 ### 2. Online Feature Exploration
 

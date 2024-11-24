@@ -11,7 +11,14 @@ from typing import Callable
 
 from transformers import AutoTokenizer
 from nnsight import LanguageModel
-from .utils import sanitize_tokens, apply_chat, parse_list_str, DummyModel, sanitize_token
+from .utils import (
+    sanitize_tokens,
+    apply_chat,
+    parse_list_str,
+    DummyModel,
+    sanitize_token,
+    LazyReadDict,
+)
 from .html_utils import (
     create_example_html,
     create_base_html,
@@ -27,6 +34,31 @@ class OfflineFeatureCentricDashboard:
     An hover text showing the activation value, token id is also shown. When the mouse passes over a token, the token is highlighted in light grey.
     By default, the text sample is not displayed entirely, but only a few tokens before and after the highest activating token. If the user clicks on the text sample, the entire text sample is displayed.
     """
+
+    @classmethod
+    def from_db(
+        cls,
+        db_path: Path | str,
+        tokenizer: AutoTokenizer,
+        column_name: str = "examples",
+        window_size: int = 50,
+        max_examples: int = 30,
+    ):
+        """
+        Create an OfflineFeatureCentricDashboard instance from a database file.
+        This is useful to avoid loading the entire max activation examples into memory.
+
+        Args:
+            db_path (Path): Path to the database file, which should contain entries in the format:
+                key: int -> examples: list of tuples, where each tuple consists of:
+                (max_activation_value: float, tokens: list of str, activation_values: list of float).
+                The examples are stored as a JSON string in the database.
+            tokenizer (AutoTokenizer): A HuggingFace tokenizer used for processing the model's input.
+            window_size (int, optional): The number of tokens to display before and after the token with the maximum activation. Defaults to 50.
+            max_examples (int, optional): The maximum number of examples to display for each feature. Defaults to 30.
+        """
+        max_activation_examples = LazyReadDict(db_path, column_name)
+        return cls(max_activation_examples, tokenizer, window_size, max_examples)
 
     def __init__(
         self,
@@ -46,8 +78,6 @@ class OfflineFeatureCentricDashboard:
         self.tokenizer = tokenizer
         self.window_size = window_size
         self.max_examples = max_examples
-        # Load templates at initialization
-
         self._setup_widgets()
 
     def _setup_widgets(self):
@@ -108,10 +138,14 @@ class OfflineFeatureCentricDashboard:
             act = activations[i]
             norm_act = norm_acts[i]
             token = sanitized_tokens[i]
-            token_tooltip = sanitize_token(tokens[i], keep_newline=False, non_breaking_space=False)
+            token_tooltip = sanitize_token(
+                tokens[i], keep_newline=False, non_breaking_space=False
+            )
             color = f"rgba(255, 0, 0, {abs(norm_act):.3f})"
             tok_id = self.tokenizer.convert_tokens_to_ids(tokens[i])
-            tooltip_content = f"Token {tok_id}: '{token_tooltip}'\nActivation: {act:.3f}"
+            tooltip_content = (
+                f"Token {tok_id}: '{token_tooltip}'\nActivation: {act:.3f}"
+            )
             html_parts.append(create_token_html(token, color, tooltip_content))
 
         return "".join(html_parts)
@@ -326,7 +360,9 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
 
             # Create tooltip content only for requested features
             tok_id = self.tokenizer.convert_tokens_to_ids(token)
-            tooltip_token = sanitize_token(token, keep_newline=False, non_breaking_space=False)
+            tooltip_token = sanitize_token(
+                token, keep_newline=False, non_breaking_space=False
+            )
             tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
             for feat in tooltip_features:
                 feat_idx = all_feature_indicies.index(feat)
