@@ -14,6 +14,8 @@ This repository provides a powerful and intuitive tool for visualizing and explo
 
 There are some other good feature activations dashboard tools out there, but I found them very hard to hack on when I wanted to add support for Crosscoders. This implementation is not as complete as https://github.com/jbloomAus/SAEDashboard or even the simplier https://github.com/callummcdougall/sae_vis but in my honest non-biased-at-all opinion, this implementation seems easier to hack on?
 
+If you're looking for a quick and easy to setup tool for feature analysis, this might be the one for you.
+
 ## Key Features
 Both the offline and online dashboards include:
 - Token-level activation highlighting
