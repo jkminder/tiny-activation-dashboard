@@ -1,5 +1,10 @@
 # Tiny Activation Dashboard
 A tiny easily hackable implementation of a feature dashboard.
+## Installation
+
+```bash
+pip install tiny-dashboard
+```
 
 ## Overview
 
@@ -24,7 +29,7 @@ Both the offline and online dashboards include:
 
 
 ```py
-from src.feature_centric_dashboards import OfflineFeatureCentricDashboard
+from tiny_dashboard.feature_centric_dashboards import OfflineFeatureCentricDashboard
 
 # Create dashboard with pre-computed activations
 max_activation_examples: dict[int, list[tuple[float, list[str], list[float]]]] = ...
@@ -63,6 +68,7 @@ Two approaches to build your real-time feature analysis dashboard:
 Create a class that implements the `AbstractOnlineFeatureCentricDashboard` class and implements the `get_feature_activation` function. This function should take a string and a tuple of feature indices and return a tensor of activation values of shape (seq_len, num_features) containing the activations of the specified features for the input text.
 
 ```py
+from tiny_dashboard.feature_centric_dashboards import AbstractOnlineFeatureCentricDashboard
 class DummyOnlineFeatureCentricDashboard(AbstractOnlineFeatureCentricDashboard):
     def get_feature_activation(self, text: str, feature_indices: tuple[int, ...]) -> th.Tensor:
         # Custom activation computation logic
@@ -72,13 +78,14 @@ class DummyOnlineFeatureCentricDashboard(AbstractOnlineFeatureCentricDashboard):
     
     # Optional: override generate_model_response to change the model's response generation
 
-online_dashboards = DummyOnlineFeatureCentricDashboard(tokenizer, model)
+online_dashboards = DummyOnlineFeatureCentricDashboard(tokenizer)
 online_dashboards.display()
 ```
 
 #### B. Function-based Method
 If you hate classes for some reason, you can also use the function-based method:
 ```py
+from tiny_dashboard.feature_centric_dashboards import OnlineFeatureCentricDashboard
 def get_feature_activation(text, feature_indices):
     return th.randn((len(tokenizer.encode(text)), len(feature_indices))).exp()
 
@@ -117,13 +124,6 @@ dashboard.display()
 
 Additional specialized implementations can be found in the `dashboard_implementations.py` file. Feel free to contribute new implementations!
 
-## Example Workflow
-
-1. Load a pre-trained language model
-2. Compute feature activations
-3. Create a dashboard
-4. Explore and analyze feature behaviors
-
 ## Repository Structure
 
 The repository is organized as follows:
@@ -139,11 +139,6 @@ The repository is organized as follows:
     - `styles.css`: CSS styling for the dashboard
     - `listeners.js`: JavaScript for interactive features (tooltips, expandable text)
 
-## Installation
-
-```bash
-pip install git+https://github.com/butanium/tiny-activation-dashboard.git
-```
 
 ## Contributing
 
