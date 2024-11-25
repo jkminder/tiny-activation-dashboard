@@ -49,19 +49,25 @@
                 return;
             }
 
-
             const isExpanded = container.dataset.expanded === 'true';
             const collapsedText = container.querySelector('.collapsed-text');
             const fullText = container.querySelector('.full-text');
+            const expandCollapseText = container.querySelector('.expand-collapse-text');
 
             if (isExpanded) {
                 collapsedText.style.display = 'block';
                 fullText.style.display = 'none';
                 container.dataset.expanded = 'false';
+                if (expandCollapseText) {
+                    expandCollapseText.textContent = 'Click to expand';
+                }
             } else {
                 collapsedText.style.display = 'none';
                 fullText.style.display = 'block';
                 container.dataset.expanded = 'true';
+                if (expandCollapseText) {
+                    expandCollapseText.textContent = 'Click to collapse';
+                }
             }
             window.setupTokenTooltips(); // Reinitialize tooltips after toggle
         };
