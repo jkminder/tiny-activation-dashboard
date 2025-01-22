@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .split-token { 
+            position: relative;
+            display: inline-block;
+            color: #000;
+            padding: 2px;
+            margin: 2px;
+        }
+
+        .split-token::before,
+        .split-token::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            z-index: -1;
+        }
+
+        .split-token::before {
+            top: 0;
+            background-color: var(--top-color);
+        }
+
+        .split-token::after {
+            bottom: 0;
+            background-color: var(--bottom-color);
+        }
+    </style>
+</head>
+<body>
+    <div style="font-size: 24px; margin: 20px;">
+        <!-- Single color test -->
+        <span class="split-token" style="--top-color: rgba(255,0,0,0.5); --bottom-color: rgba(255,0,0,0.5);">
+            Single Color
+        </span>
+        
+        <!-- Split color test -->
+        <span class="split-token" style="--top-color: rgba(255,0,0,0.7); --bottom-color: rgba(0,0,255,0.7);">
+            Split Color
+        </span>
+    </div>
+</body>
+</html> 
