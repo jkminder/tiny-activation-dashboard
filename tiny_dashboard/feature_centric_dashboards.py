@@ -352,14 +352,16 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             highlight_acts = activations[:, highlight_idx]
             max_highlight = highlight_acts.max()
             norm_acts = highlight_acts / (max_highlight + 1e-6)
-            
+
             for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
                 opacity = norm_acts[i].item()
                 color = f"rgba(255, 0, 0, {opacity:.3f})"
-                
+
                 # Create tooltip content
                 tok_id = self.tokenizer.convert_tokens_to_ids(token)
-                tooltip_token = sanitize_token(token, keep_newline=False, non_breaking_space=False)
+                tooltip_token = sanitize_token(
+                    token, keep_newline=False, non_breaking_space=False
+                )
                 tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
                 for feat in tooltip_features:
                     feat_idx = all_feature_indices.index(feat)
@@ -367,7 +369,9 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                     tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
 
                 tooltip_content = "\n".join(tooltip_lines)
-                html_parts.append(create_token_html(san_token, (color, color), tooltip_content))
+                html_parts.append(
+                    create_token_html(san_token, (color, color), tooltip_content)
+                )
         else:
             # Two feature case
             idx1, idx2 = [all_feature_indices.index(f) for f in highlight_features[:2]]
@@ -383,7 +387,9 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 color2 = f"rgba(0, 0, 255, {opacity2:.3f})"
 
                 tok_id = self.tokenizer.convert_tokens_to_ids(token)
-                tooltip_token = sanitize_token(token, keep_newline=False, non_breaking_space=False)
+                tooltip_token = sanitize_token(
+                    token, keep_newline=False, non_breaking_space=False
+                )
                 tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
                 for feat in tooltip_features:
                     feat_idx = all_feature_indices.index(feat)
@@ -391,7 +397,9 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                     tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
 
                 tooltip_content = "\n".join(tooltip_lines)
-                html_parts.append(create_token_html(san_token, (color1, color2), tooltip_content))
+                html_parts.append(
+                    create_token_html(san_token, (color1, color2), tooltip_content)
+                )
 
         return "".join(html_parts)
 
@@ -407,7 +415,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             self.highlight_features = highlight_features
             if len(highlight_features) not in (1, 2):
                 raise ValueError("Please enter one or two features to highlight")
-            
+
             # Parse display control features
             tooltip_features = parse_list_str(self.tooltip_features.value.strip())
 
@@ -503,7 +511,11 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         # Generate filename with timestamp
         if filename is None:
             timestamp = int(time.time())
-            filename = save_path / str("_".join(map(str, self.highlight_features))) / f"{timestamp}.html"
+            filename = (
+                save_path
+                / str("_".join(map(str, self.highlight_features)))
+                / f"{timestamp}.html"
+            )
         else:
             filename = save_path / filename
         # Write the HTML file

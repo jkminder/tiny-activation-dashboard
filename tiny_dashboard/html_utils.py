@@ -73,9 +73,11 @@ def create_feature_section_html(
     )
 
 
-def create_token_html(token: str, color: str | tuple[str, str], tooltip_content: str) -> str:
+def create_token_html(
+    token: str, color: str | tuple[str, str], tooltip_content: str
+) -> str:
     """Create HTML for a single token span with tooltip.
-    
+
     Args:
         token: The token text to display
         color: Either a single color string for single feature,
@@ -87,7 +89,7 @@ def create_token_html(token: str, color: str | tuple[str, str], tooltip_content:
     else:
         # Single feature case - use same color for top and bottom
         top_color = bottom_color = color
-        
+
     return update_template_string(
         token_template,
         {

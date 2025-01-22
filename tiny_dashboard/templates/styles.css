@@ -1,12 +1,14 @@
-.token { 
+.token {
     transition: background-color 0.1s;
     position: relative;
     display: inline-block;
     padding: 1px;
 }
-.token:hover { 
+
+.token:hover {
     filter: brightness(0.9);
 }
+
 .token-tooltip {
     position: absolute;
     background: black;
@@ -18,16 +20,22 @@
     z-index: 1000;
     white-space: pre-wrap;
 }
+
 .feature-section {
     margin: 20px 0;
     padding: 10px;
     border: 1px solid #ccc;
 }
+
 .text-sample {
-    word-wrap: break-word; /* Allows long words to break and wrap onto the next line */
-    overflow-wrap: break-word; /* Ensures compatibility with different browsers */
-    cursor: pointer; /* Add pointer cursor to indicate interactivity */
+    word-wrap: break-word;
+    /* Allows long words to break and wrap onto the next line */
+    overflow-wrap: break-word;
+    /* Ensures compatibility with different browsers */
+    cursor: pointer;
+    /* Add pointer cursor to indicate interactivity */
 }
+
 .text-sample::after {
     content: "Right-click to copy";
     display: block;
@@ -36,9 +44,11 @@
     margin-top: 5px;
     font-style: italic;
 }
+
 .text-sample.copied::after {
     content: "Copied!";
 }
+
 /* Style the "Click to expand" text to match */
 .expand-collapse-text {
     color: gray !important;
@@ -48,7 +58,7 @@
     margin-bottom: 0 !important;
 }
 
-.split-token { 
+.split-token {
     position: relative;
     display: inline-block;
     color: #000;

@@ -8,6 +8,7 @@ from .html_utils import (
 from .utils import sanitize_tokens, sanitize_token
 from typing import Optional, Union, List
 
+
 def activation_visualization(
     tokens: list[str],
     activations: th.Tensor,
@@ -18,7 +19,7 @@ def activation_visualization(
     color2: tuple[int, int, int] = (0, 0, 255),
 ) -> str:
     """Create HTML with highlighted tokens based on activation values.
-    
+
     Args:
         tokens: List of tokens to display
         activations: Tensor of activation values. Shape: [num_features, seq_len] or [seq_len]
@@ -29,12 +30,12 @@ def activation_visualization(
         title: Title for the visualization
         color1: RGB tuple for primary color (default red)
         color2: RGB tuple for secondary color (default blue)
-    
+
     Returns:
         HTML string containing the visualization
     """
     html_parts = []
-    
+
     # Handle different activation cases
     if activations.dim() == 1:
         if highlight_idx is not None:
@@ -47,21 +48,24 @@ def activation_visualization(
         if highlight_idx is None:
             # Default to first feature or first two features
             highlight_idx = [0] if activations.shape[0] == 1 else [0, 1]
-        
+
         if isinstance(highlight_idx, int):
             highlight_idx = [highlight_idx]
-            
+
         if len(highlight_idx) == 1:
             # Single feature case
             highlight_acts = activations[highlight_idx[0]]
-            other_features = [i for i in range(activations.shape[0]) if i != highlight_idx[0]]
+            other_features = [
+                i for i in range(activations.shape[0]) if i != highlight_idx[0]
+            ]
             secondary_acts = None
         elif len(highlight_idx) == 2:
             # Two feature case
             highlight_acts = activations[highlight_idx[0]]
             secondary_acts = activations[highlight_idx[1]]
-            other_features = [i for i in range(activations.shape[0]) 
-                            if i not in highlight_idx]
+            other_features = [
+                i for i in range(activations.shape[0]) if i not in highlight_idx
+            ]
         else:
             raise ValueError("highlight_idx must contain 1 or 2 indices")
 
@@ -82,14 +86,14 @@ def activation_visualization(
     for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
         # Calculate primary color
         intensity_primary = norm_acts[i].item() if not norm_acts[i].isnan() else 0
-        primary_color = f"rgba({color1[0]}, {color1[1]}, {color1[2]}, {intensity_primary:.3f})"
-        
+        primary_color = (
+            f"rgba({color1[0]}, {color1[1]}, {color1[2]}, {intensity_primary:.3f})"
+        )
+
         # Calculate secondary color
         if secondary_acts is not None:
             intensity_secondary = (
-                norm_secondary[i].item() 
-                if not norm_secondary[i].isnan() 
-                else 0
+                norm_secondary[i].item() if not norm_secondary[i].isnan() else 0
             )
             secondary_color = f"rgba({color2[0]}, {color2[1]}, {color2[2]}, {intensity_secondary:.3f})"
         else:
@@ -101,22 +105,22 @@ def activation_visualization(
             token, keep_newline=False, non_breaking_space=False
         )
         tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
-        
+
         # Add activations to tooltip
         if secondary_acts is not None:
-            tooltip_lines.extend([
-                f"Feature {highlight_idx[0]}: {highlight_acts[i].item():.3f}",
-                f"Feature {highlight_idx[1]}: {secondary_acts[i].item():.3f}"
-            ])
+            tooltip_lines.extend(
+                [
+                    f"Feature {highlight_idx[0]}: {highlight_acts[i].item():.3f}",
+                    f"Feature {highlight_idx[1]}: {secondary_acts[i].item():.3f}",
+                ]
+            )
         elif activations.shape[0] > 1:  # 2D tensor with single highlight
             tooltip_lines.append(
                 f"Feature {highlight_idx[0]}: {highlight_acts[i].item():.3f}"
             )
         else:  # 1D tensor
-            tooltip_lines.append(
-                f"Activation: {highlight_acts[i].item():.3f}"
-            )
-        
+            tooltip_lines.append(f"Activation: {highlight_acts[i].item():.3f}")
+
         # Add other feature activations to tooltip
         for feat in other_features:
             act_value = activations[feat, i].item()
@@ -124,10 +128,12 @@ def activation_visualization(
 
         tooltip_content = "\n".join(tooltip_lines)
         html_parts.append(
-            create_token_html(san_token, (primary_color, secondary_color), tooltip_content)
+            create_token_html(
+                san_token, (primary_color, secondary_color), tooltip_content
+            )
         )
 
     html = "".join(html_parts)
     max_val = max(max_primary.item(), max_secondary.item())
     html = create_example_html(max_val, html, static=True)
-    return create_base_html(title, html) 
+    return create_base_html(title, html)

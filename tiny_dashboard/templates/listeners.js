@@ -77,7 +77,7 @@
     if (typeof window.copyExampleToClipboard === 'undefined') {
         window.copyExampleToClipboard = function (event, container) {
             event.preventDefault(); // Prevent default context menu
-            
+
             // Get the full text content
             const fullText = container.querySelector('.full-text');
             const textToCopy = Array.from(fullText.querySelectorAll('.token'))
