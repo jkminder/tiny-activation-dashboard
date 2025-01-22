@@ -81,5 +81,6 @@ def create_token_html(token: str, color: str, tooltip_content: str) -> str:
             "token": token.replace(" ", "&nbsp;"),
             "color": color,
             "tooltip_content": tooltip_content,
+            "token_str": token,
         },
     )
