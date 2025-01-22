@@ -24,4 +24,24 @@
 .text-sample {
     word-wrap: break-word; /* Allows long words to break and wrap onto the next line */
     overflow-wrap: break-word; /* Ensures compatibility with different browsers */
+    cursor: pointer; /* Add pointer cursor to indicate interactivity */
+}
+.text-sample::after {
+    content: "Right-click to copy";
+    display: block;
+    color: gray;
+    font-size: 0.8em;
+    margin-top: 5px;
+    font-style: italic;
+}
+.text-sample.copied::after {
+    content: "Copied!";
+}
+/* Style the "Click to expand" text to match */
+.expand-collapse-text {
+    color: gray !important;
+    font-size: 0.8em !important;
+    margin-top: 5px !important;
+    font-style: italic !important;
+    margin-bottom: 0 !important;
 }

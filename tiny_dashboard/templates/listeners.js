@@ -73,6 +73,35 @@
         };
     }
 
+    // Add copyExampleToClipboard to window object
+    if (typeof window.copyExampleToClipboard === 'undefined') {
+        window.copyExampleToClipboard = function (event, container) {
+            event.preventDefault(); // Prevent default context menu
+            
+            // Get the full text content
+            const fullText = container.querySelector('.full-text');
+            const textToCopy = Array.from(fullText.querySelectorAll('.token'))
+                .map(token => {
+                    // Convert token 108 (\n) into actual newline
+                    if (token.dataset.tooltip && token.dataset.tooltip.includes('Token 108:')) {
+                        return '\n';
+                    }
+                    return token.textContent;
+                })
+                .join('');
+
+            // Copy to clipboard
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                // Change the "Right-click to copy" text temporarily
+                const sampleContainer = container.closest('.text-sample');
+                sampleContainer.classList.add('copied');
+                setTimeout(() => {
+                    sampleContainer.classList.remove('copied');
+                }, 1000);
+            });
+        };
+    }
+
     // Initialize tooltips when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', window.setupTokenTooltips);
