@@ -228,12 +228,12 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
 
     @abstractmethod
     def get_feature_activation(
-        self, text: str, feature_indicies: tuple[int, ...]
+        self, text: str, feature_indices: tuple[int, ...]
     ) -> th.Tensor:
         """Get the activation values for given features
         Args:
             text: Input text
-            feature_indicies: Indices of features to compute
+            feature_indices: Indices of features to compute
         Returns:
             Activation values for the given features as a tensor of shape (seq_len, num_features)
         """
@@ -338,7 +338,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         self,
         tokens: list[str],
         activations: th.Tensor,
-        all_feature_indicies: list[int],
+        all_feature_indices: list[int],
         highlight_feature_idx: int,
         tooltip_features: list[int],
     ) -> str:
@@ -346,7 +346,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         html_parts = []
 
         # Find highlight feature index in the activation tensor
-        highlight_idx = all_feature_indicies.index(highlight_feature_idx)
+        highlight_idx = all_feature_indices.index(highlight_feature_idx)
         # Normalize activations for color intensity (only for highlight feature)
         highlight_acts = activations[:, highlight_idx]
         max_highlight = highlight_acts.max()
@@ -365,7 +365,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             )
             tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
             for feat in tooltip_features:
-                feat_idx = all_feature_indicies.index(feat)
+                feat_idx = all_feature_indices.index(feat)
                 act_value = activations[i, feat_idx].item()
                 tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
 
@@ -379,7 +379,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         try:
             # Parse feature indices for computation
             f_idx_str = self.feature_input.value.strip()
-            feature_indicies = parse_list_str(f_idx_str)
+            feature_indices = parse_list_str(f_idx_str)
 
             # Parse display control features
             highlight_feature = int(self.highlight_feature.value.strip())
@@ -389,10 +389,10 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             # Ensure highlighted feature is included in tooltip features
 
             for h in tooltip_features:
-                if h not in feature_indicies:
-                    feature_indicies.append(h)
-            if highlight_feature not in feature_indicies:
-                feature_indicies.insert(0, highlight_feature)
+                if h not in feature_indices:
+                    feature_indices.append(h)
+            if highlight_feature not in feature_indices:
+                feature_indices.insert(0, highlight_feature)
             if highlight_feature not in tooltip_features:
                 tooltip_features.insert(
                     0, highlight_feature
@@ -416,7 +416,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 text = full_response
                 tokens = self.tokenizer.tokenize(text, add_special_tokens=True)
 
-            activations = self.get_feature_activation(text, tuple(feature_indicies))
+            activations = self.get_feature_activation(text, tuple(feature_indices))
             assert (
                 len(tokens) == activations.shape[0]
             ), f"Tokens are not the same length as activations, got {len(tokens)} and {activations.shape[0]}"
@@ -426,8 +426,8 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 # Create the HTML content as before
                 max_acts_html = []
                 for feat in tooltip_features:
-                    if feat in feature_indicies:
-                        feat_idx = feature_indicies.index(feat)
+                    if feat in feature_indices:
+                        feat_idx = feature_indices.index(feat)
                         max_act = activations[:, feat_idx].max().item()
                         max_acts_html.append(f"Feature {feat} max: {max_act:.3f}")
 
@@ -440,7 +440,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 html_content = self._create_html_highlight(
                     tokens,
                     activations,
-                    feature_indicies,
+                    feature_indices,
                     highlight_feature,
                     tooltip_features,
                 )
