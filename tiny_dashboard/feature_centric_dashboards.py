@@ -269,10 +269,10 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             style={"description_width": "initial"},
         )
 
-        # New widgets for display control
+        # Update highlight feature input to be more flexible
         self.highlight_feature = widgets.Text(
-            placeholder="Enter feature to highlight in red",
-            description="Highlight feature:",
+            placeholder="Enter 1-2 features to highlight (e.g. 1 or 1,2)",
+            description="Highlight features:",
             continuous_update=False,
             style={"description_width": "initial"},
             layout=widgets.Layout(width="310px"),
@@ -339,38 +339,67 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         tokens: list[str],
         activations: th.Tensor,
         all_feature_indices: list[int],
-        highlight_feature_idx: int,
+        highlight_features: list[int],
         tooltip_features: list[int],
     ) -> str:
         """Create HTML with highlighted tokens based on activation values"""
         html_parts = []
-
-        # Find highlight feature index in the activation tensor
-        highlight_idx = all_feature_indices.index(highlight_feature_idx)
-        # Normalize activations for color intensity (only for highlight feature)
-        highlight_acts = activations[:, highlight_idx]
-        max_highlight = highlight_acts.max()
-        norm_acts = highlight_acts / (max_highlight + 1e-6)
-
-        # Create HTML spans with activation values
         sanitized_tokens = sanitize_tokens(tokens, non_breaking_space=False)
-        for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
 
-            color = f"rgba(255, 0, 0, {norm_acts[i].item():.3f})"
+        if len(highlight_features) == 1:
+            # Single feature case
+            highlight_idx = all_feature_indices.index(highlight_features[0])
+            highlight_acts = activations[:, highlight_idx]
+            max_highlight = highlight_acts.max()
+            norm_acts = highlight_acts / (max_highlight + 1e-6)
 
-            # Create tooltip content only for requested features
-            tok_id = self.tokenizer.convert_tokens_to_ids(token)
-            tooltip_token = sanitize_token(
-                token, keep_newline=False, non_breaking_space=False
-            )
-            tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
-            for feat in tooltip_features:
-                feat_idx = all_feature_indices.index(feat)
-                act_value = activations[i, feat_idx].item()
-                tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
+            for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
+                opacity = norm_acts[i].item()
+                color = f"rgba(255, 0, 0, {opacity:.3f})"
 
-            tooltip_content = "\n".join(tooltip_lines)
-            html_parts.append(create_token_html(san_token, color, tooltip_content))
+                # Create tooltip content
+                tok_id = self.tokenizer.convert_tokens_to_ids(token)
+                tooltip_token = sanitize_token(
+                    token, keep_newline=False, non_breaking_space=False
+                )
+                tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
+                for feat in tooltip_features:
+                    feat_idx = all_feature_indices.index(feat)
+                    act_value = activations[i, feat_idx].item()
+                    tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
+
+                tooltip_content = "\n".join(tooltip_lines)
+                html_parts.append(
+                    create_token_html(san_token, (color, color), tooltip_content)
+                )
+        else:
+            # Two feature case
+            idx1, idx2 = [all_feature_indices.index(f) for f in highlight_features[:2]]
+            acts1, acts2 = activations[:, idx1], activations[:, idx2]
+            max1, max2 = acts1.max(), acts2.max()
+            norm1 = acts1 / (max1 + 1e-6)
+            norm2 = acts2 / (max2 + 1e-6)
+
+            for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
+                opacity1 = norm1[i].item()
+                opacity2 = norm2[i].item()
+                color1 = f"rgba(255, 0, 0, {opacity1:.3f})"
+                color2 = f"rgba(0, 0, 255, {opacity2:.3f})"
+
+                tok_id = self.tokenizer.convert_tokens_to_ids(token)
+                tooltip_token = sanitize_token(
+                    token, keep_newline=False, non_breaking_space=False
+                )
+                tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
+                for feat in tooltip_features:
+                    feat_idx = all_feature_indices.index(feat)
+                    act_value = activations[i, feat_idx].item()
+                    tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
+
+                tooltip_content = "\n".join(tooltip_lines)
+                html_parts.append(
+                    create_token_html(san_token, (color1, color2), tooltip_content)
+                )
 
         return "".join(html_parts)
 
@@ -381,22 +410,22 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             f_idx_str = self.feature_input.value.strip()
             feature_indices = parse_list_str(f_idx_str)
 
+            # Parse features for highlighting - now accepts 1 or 2 features
+            highlight_features = parse_list_str(self.highlight_feature.value.strip())
+            self.highlight_features = highlight_features
+            if len(highlight_features) not in (1, 2):
+                raise ValueError("Please enter one or two features to highlight")
+
             # Parse display control features
-            highlight_feature = int(self.highlight_feature.value.strip())
-            self.feature_to_highlight = highlight_feature
             tooltip_features = parse_list_str(self.tooltip_features.value.strip())
 
-            # Ensure highlighted feature is included in tooltip features
-
-            for h in tooltip_features:
+            # Ensure highlighted features are included in computation and tooltips
+            for h in highlight_features:
                 if h not in feature_indices:
-                    feature_indices.append(h)
-            if highlight_feature not in feature_indices:
-                feature_indices.insert(0, highlight_feature)
-            if highlight_feature not in tooltip_features:
-                tooltip_features.insert(
-                    0, highlight_feature
-                )  # Add highlight feature as first
+                    feature_indices.insert(0, h)
+                if h not in tooltip_features:
+                    tooltip_features.insert(0, h)
+
             text = self.text_input.value
             if text == "":
                 print("No text to analyze")
@@ -441,7 +470,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                     tokens,
                     activations,
                     feature_indices,
-                    highlight_feature,
+                    highlight_features,
                     tooltip_features,
                 )
                 example_html = create_example_html(
@@ -482,7 +511,11 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         # Generate filename with timestamp
         if filename is None:
             timestamp = int(time.time())
-            filename = save_path / str(self.feature_to_highlight) / f"{timestamp}.html"
+            filename = (
+                save_path
+                / str("_".join(map(str, self.highlight_features)))
+                / f"{timestamp}.html"
+            )
         else:
             filename = save_path / filename
         # Write the HTML file

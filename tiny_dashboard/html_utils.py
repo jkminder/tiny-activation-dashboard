@@ -73,13 +73,29 @@ def create_feature_section_html(
     )
 
 
-def create_token_html(token: str, color: str, tooltip_content: str) -> str:
-    """Create HTML for a single token span with tooltip."""
+def create_token_html(
+    token: str, color: str | tuple[str, str], tooltip_content: str
+) -> str:
+    """Create HTML for a single token span with tooltip.
+
+    Args:
+        token: The token text to display
+        color: Either a single color string for single feature,
+               or a tuple of (top_color, bottom_color) for dual feature visualization
+        tooltip_content: Text to show in tooltip
+    """
+    if isinstance(color, tuple):
+        top_color, bottom_color = color
+    else:
+        # Single feature case - use same color for top and bottom
+        top_color = bottom_color = color
+
     return update_template_string(
         token_template,
         {
             "token": token.replace(" ", "&nbsp;"),
-            "color": color,
+            "top_color": top_color,
+            "bottom_color": bottom_color,
             "tooltip_content": tooltip_content,
             "token_str": token,
         },

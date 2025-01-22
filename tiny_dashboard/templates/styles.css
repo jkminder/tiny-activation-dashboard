@@ -1,10 +1,26 @@
-.token { 
+.token {
+    --original-gradient: linear-gradient(to bottom, var(--top-color) 50%, var(--bottom-color) 50%);
+    background: var(--original-gradient);
     transition: background-color 0.1s;
     position: relative;
+    display: inline;
+    padding: 0;
+    line-height: 1;
+    vertical-align: baseline;
 }
-.token:hover { 
-    background-image: linear-gradient(rgba(128, 128, 128, 0.3), rgba(128, 128, 128, 0.3));
+
+.token:hover::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(128, 128, 128, 0.2);
+    mix-blend-mode: overlay;
+    pointer-events: none;
 }
+
 .token-tooltip {
     position: absolute;
     background: black;
@@ -16,16 +32,22 @@
     z-index: 1000;
     white-space: pre-wrap;
 }
+
 .feature-section {
     margin: 20px 0;
     padding: 10px;
     border: 1px solid #ccc;
 }
+
 .text-sample {
-    word-wrap: break-word; /* Allows long words to break and wrap onto the next line */
-    overflow-wrap: break-word; /* Ensures compatibility with different browsers */
-    cursor: pointer; /* Add pointer cursor to indicate interactivity */
+    word-wrap: break-word;
+    /* Allows long words to break and wrap onto the next line */
+    overflow-wrap: break-word;
+    /* Ensures compatibility with different browsers */
+    cursor: pointer;
+    /* Add pointer cursor to indicate interactivity */
 }
+
 .text-sample::after {
     content: "Right-click to copy";
     display: block;
@@ -34,9 +56,11 @@
     margin-top: 5px;
     font-style: italic;
 }
+
 .text-sample.copied::after {
     content: "Copied!";
 }
+
 /* Style the "Click to expand" text to match */
 .expand-collapse-text {
     color: gray !important;
@@ -44,4 +68,35 @@
     margin-top: 5px !important;
     font-style: italic !important;
     margin-bottom: 0 !important;
+}
+
+.split-token {
+    position: relative;
+    display: inline;
+    color: #000;
+    line-height: 1;
+    vertical-align: baseline;
+}
+
+.split-token::before,
+.split-token::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    z-index: -1;
+    transition: background-color 0.1s;
+    box-sizing: border-box;
+    top: 0;
+}
+
+.split-token::after {
+    top: 50%;
+}
+
+.split-token:hover::before,
+.split-token:hover::after {
+    background-image: none;
+    background-color: rgba(128, 128, 128, 0.3);
 }
