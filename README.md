@@ -8,7 +8,16 @@ pip install tiny-dashboard
 
 ## Overview
 
-This repository provides a powerful and intuitive tool for visualizing and exploring feature activations in neural language models, with a focus on making complex model interpretability more accessible.
+This repository provides minimal implementations of activations visualization with:
+- An online feature dashboard, where you compute and display activations on some custom text
+- An offline feature dashboard, which can display precomputed activation examples.
+
+Online dashboard demo:
+![image](https://github.com/user-attachments/assets/17d176bf-e8e5-471b-bbbf-dc3286f16907)
+
+Offline dashboard demo:
+![image](https://github.com/user-attachments/assets/74ab6d98-b10a-4894-a2a3-72f1f20ae7ac)
+
 
 ## Motivation
 
