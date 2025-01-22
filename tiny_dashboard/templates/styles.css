@@ -3,12 +3,22 @@
     background: var(--original-gradient);
     transition: background-color 0.1s;
     position: relative;
-    display: inline-block;
-    padding: 1px;
+    display: inline;
+    padding: 0;
+    line-height: 1;
+    vertical-align: baseline;
 }
 
-.token:hover {
-    background: linear-gradient(rgba(128, 128, 128, 0.3), rgba(128, 128, 128, 0.3)), var(--original-gradient) !important;
+.token:hover::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(128, 128, 128, 0.2);
+    mix-blend-mode: overlay;
+    pointer-events: none;
 }
 
 .token-tooltip {
@@ -62,8 +72,10 @@
 
 .split-token {
     position: relative;
-    display: inline-block;
+    display: inline;
     color: #000;
+    line-height: 1;
+    vertical-align: baseline;
 }
 
 .split-token::before,
@@ -75,19 +87,16 @@
     height: 50%;
     z-index: -1;
     transition: background-color 0.1s;
-}
-
-.split-token::before {
+    box-sizing: border-box;
     top: 0;
-    background-color: var(--top-color);
 }
 
 .split-token::after {
-    bottom: 0;
-    background-color: var(--bottom-color);
+    top: 50%;
 }
 
 .split-token:hover::before,
 .split-token:hover::after {
-    background-image: linear-gradient(rgba(128, 128, 128, 0.3), rgba(128, 128, 128, 0.3));
+    background-image: none;
+    background-color: rgba(128, 128, 128, 0.3);
 }
