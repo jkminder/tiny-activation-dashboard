@@ -9,16 +9,10 @@
     vertical-align: baseline;
 }
 
-.token:hover::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(128, 128, 128, 0.2);
-    mix-blend-mode: overlay;
-    pointer-events: none;
+.token:hover {
+    background-image:
+        linear-gradient(rgba(128, 128, 128, 0.3), rgba(128, 128, 128, 0.3)),
+        var(--original-gradient);
 }
 
 .token-tooltip {

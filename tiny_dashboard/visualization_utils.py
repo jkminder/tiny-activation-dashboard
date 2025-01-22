@@ -129,7 +129,10 @@ def activation_visualization(
         tooltip_content = "\n".join(tooltip_lines)
         html_parts.append(
             create_token_html(
-                san_token, (primary_color, secondary_color), tooltip_content
+                san_token,
+                sanitize_token(tokens[i], keep_newline=False, non_breaking_space=False),
+                (primary_color, secondary_color),
+                tooltip_content,
             )
         )
 

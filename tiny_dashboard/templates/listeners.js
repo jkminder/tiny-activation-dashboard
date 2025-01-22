@@ -82,9 +82,10 @@
             const fullText = container.querySelector('.full-text');
             const textToCopy = Array.from(fullText.querySelectorAll('.token'))
                 .map(token => {
-                    return token.dataset.tokenStr;
+                    return token.dataset.tokenstr;
                 })
                 .join('');
+            console.log("tokens: ", Array.from(fullText.querySelectorAll('.token')));
             console.log("copying text: ", textToCopy);
 
             // Copy to clipboard

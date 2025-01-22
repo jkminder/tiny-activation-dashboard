@@ -74,7 +74,7 @@ def create_feature_section_html(
 
 
 def create_token_html(
-    token: str, color: str | tuple[str, str], tooltip_content: str
+    token: str, tokenstr: str, color: str | tuple[str, str], tooltip_content: str
 ) -> str:
     """Create HTML for a single token span with tooltip.
 
@@ -89,7 +89,8 @@ def create_token_html(
     else:
         # Single feature case - use same color for top and bottom
         top_color = bottom_color = color
-
+    if "<br>" in tokenstr:
+        raise ValueError("Token contains <br> tag")
     return update_template_string(
         token_template,
         {
@@ -97,6 +98,6 @@ def create_token_html(
             "top_color": top_color,
             "bottom_color": bottom_color,
             "tooltip_content": tooltip_content,
-            "token_str": token,
+            "token_str": tokenstr.replace("\\n", "&#10;"),
         },
     )

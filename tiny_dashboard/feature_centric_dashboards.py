@@ -133,20 +133,21 @@ class OfflineFeatureCentricDashboard:
         norm_acts = act_array / max_act if max_act > 0 else act_array
 
         # Create HTML spans with activation values
-        sanitized_tokens = sanitize_tokens(tokens)
         for i in range(start_idx, end_idx):
             act = activations[i]
             norm_act = norm_acts[i]
-            token = sanitized_tokens[i]
-            token_tooltip = sanitize_token(
+            tokenstr = sanitize_token(
                 tokens[i], keep_newline=False, non_breaking_space=False
             )
             color = f"rgba(255, 0, 0, {abs(norm_act):.3f})"
             tok_id = self.tokenizer.convert_tokens_to_ids(tokens[i])
             tooltip_content = (
-                f"Token {tok_id}: '{token_tooltip}'\nActivation: {act:.3f}"
+                f"Token {tok_id}: '{tokenstr}'\nActivation: {act:.3f}"
             )
-            html_parts.append(create_token_html(token, color, tooltip_content))
+            token = sanitize_token(
+                tokens[i], keep_newline=True, non_breaking_space=True
+            )
+            html_parts.append(create_token_html(token, tokenstr, color, tooltip_content))
 
         return "".join(html_parts)
 
