@@ -82,13 +82,10 @@
             const fullText = container.querySelector('.full-text');
             const textToCopy = Array.from(fullText.querySelectorAll('.token'))
                 .map(token => {
-                    // Convert token 108 (\n) into actual newline
-                    if (token.dataset.tooltip && token.dataset.tooltip.includes('Token 108:')) {
-                        return '\n';
-                    }
-                    return token.textContent;
+                    return token.dataset.tokenStr;
                 })
                 .join('');
+            console.log("copying text: ", textToCopy);
 
             // Copy to clipboard
             navigator.clipboard.writeText(textToCopy).then(() => {

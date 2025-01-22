@@ -1,4 +1,6 @@
 .token {
+    --original-gradient: linear-gradient(to bottom, var(--top-color) 50%, var(--bottom-color) 50%);
+    background: var(--original-gradient);
     transition: background-color 0.1s;
     position: relative;
     display: inline-block;
@@ -6,7 +8,7 @@
 }
 
 .token:hover {
-    filter: brightness(0.9);
+    background: linear-gradient(rgba(128, 128, 128, 0.3), rgba(128, 128, 128, 0.3)), var(--original-gradient) !important;
 }
 
 .token-tooltip {
