@@ -21,6 +21,7 @@ def activation_visualization(
     activation_names: list[str] = None,
     relative_normalization: bool = True,
     tooltip_features: Optional[Union[int, List[int]]] = None,
+    highlight_features_in_tooltip: bool = True,
 ) -> str:
     """Create HTML with highlighted tokens based on activation values.
 
@@ -37,6 +38,7 @@ def activation_visualization(
         activation_names: List of names for each feature (optional)
         relative_normalization: If True, normalize each feature independently
         tooltip_features: Which features to show in tooltip (None = all)
+        highlight_features_in_tooltip: If True, ensure that the highlighted features are in the tooltip
     Returns:
         HTML string containing the visualization
     """
@@ -52,6 +54,7 @@ def activation_visualization(
         relative_normalization=relative_normalization,
         activation_names=activation_names,
         tooltip_features=tooltip_features,
+        highlight_features_in_tooltip=highlight_features_in_tooltip,
         return_max_acts_str=True,
     )
     html = create_example_html(max_acts_str, html, static=True)

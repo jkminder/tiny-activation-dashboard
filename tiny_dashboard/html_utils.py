@@ -123,6 +123,7 @@ def create_highlighted_tokens_html(
     relative_normalization: bool = True,  # False = normalize against global max
     activation_names: list[str] = None,
     return_max_acts_str: bool = False,
+    highlight_features_in_tooltip: bool = True,
 ) -> str | tuple[str, str]:
     """Create HTML with highlighted tokens based on activation values.
 
@@ -138,21 +139,18 @@ def create_highlighted_tokens_html(
         relative_normalization: If True, normalize each feature independently
         activation_names: List of names for each feature (optional)
         return_max_acts_str: If True, return a string with the max activation values
+        highlight_features_in_tooltip: If True, ensure that the highlighted features are in the tooltip
 
     Returns:
         HTML string containing the highlighted tokens
         If return_max_acts_str is True, return a tuple with the HTML string and the max activation values string
     """
+    if activations.dim() == 1:
+        activations = activations.unsqueeze(1)
+    elif activations.dim() != 2:
+        raise ValueError("Activations must be 1D or 2D")
     if highlight_features is None:
-        if activations.dim() == 1:
-            highlight_features = [0]
-            activations = activations.unsqueeze(1)
-        elif activations.dim() == 2:
-            highlight_features = [0, 1]
-        else:
-            raise ValueError(
-                "Cannot highlight features if activations are not 1D or 2D"
-            )
+        highlight_features = list(range(activations.shape[1]))
     if isinstance(highlight_features, int):
         highlight_features = [highlight_features]
     if len(highlight_features) > 2:
@@ -163,15 +161,16 @@ def create_highlighted_tokens_html(
         raise ValueError(
             "Cannot highlight 2 features if activations are not 2D or have less than 2 features"
         )
-    if isinstance(tooltip_features, int):
-        tooltip_features = [tooltip_features]
     if activation_names is None:
         activation_names = [f"Feature {i}" for i in list(range(activations.shape[1]))]
     if color2 is None:
         color2 = color1
-    # Prepare features for visualization
+    if isinstance(tooltip_features, int):
+        tooltip_features = [tooltip_features]
     if tooltip_features is None:
         tooltip_features = list(range(activations.shape[1]))
+    if highlight_features_in_tooltip:
+        tooltip_features = list(dict.fromkeys(highlight_features + tooltip_features))
 
     # Get activation values for highlighted features
     highlight_acts = [activations[:, idx] for idx in highlight_features]

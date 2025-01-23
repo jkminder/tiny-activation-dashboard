@@ -23,6 +23,7 @@ from .html_utils import (
     create_example_html,
     create_base_html,
     create_token_html,
+    create_highlighted_tokens_html,
 )
 
 
@@ -118,38 +119,23 @@ class OfflineFeatureCentricDashboard:
         max_idx: int,
         show_full: bool = False,
     ) -> str:
-        html_parts = []
+        act_tensor = th.tensor(activations)
+
         # Determine window bounds
-        if show_full:
-            start_idx = 0
-            end_idx = len(tokens)
-        else:
+        if not show_full:
             start_idx = max(0, max_idx - self.window_size)
             end_idx = min(len(tokens), max_idx + self.window_size + 1)
+            tokens = tokens[start_idx:end_idx]
+            act_tensor = act_tensor[start_idx:end_idx]
 
-        # Normalize activations for color intensity
-        act_array = np.array(activations)
-        max_act = np.max(np.abs(act_array))
-        norm_acts = act_array / max_act if max_act > 0 else act_array
-
-        # Create HTML spans with activation values
-        for i in range(start_idx, end_idx):
-            act = activations[i]
-            norm_act = norm_acts[i]
-            tokenstr = sanitize_token(
-                tokens[i], keep_newline=False, non_breaking_space=False
-            )
-            color = f"rgba(255, 0, 0, {abs(norm_act):.3f})"
-            tok_id = self.tokenizer.convert_tokens_to_ids(tokens[i])
-            tooltip_content = (
-                f"Token {tok_id}: '{tokenstr}'\nActivation: {act:.3f}"
-            )
-            token = sanitize_token(
-                tokens[i], keep_newline=True, non_breaking_space=True
-            )
-            html_parts.append(create_token_html(token, tokenstr, color, tooltip_content))
-
-        return "".join(html_parts)
+        return create_highlighted_tokens_html(
+            tokens=tokens,
+            activations=act_tensor,
+            tokenizer=self.tokenizer,
+            highlight_features=0,  # Single feature case
+            color1=(255, 0, 0),  # Red color
+            activation_names=["Activation"],
+        )
 
     def generate_html(self, feature_idx: int) -> str:
         examples = self.max_activation_examples[feature_idx]
@@ -342,67 +328,31 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         all_feature_indices: list[int],
         highlight_features: list[int],
         tooltip_features: list[int],
-    ) -> str:
+        return_max_acts: bool = False,
+    ) -> str | tuple[str, str]:
         """Create HTML with highlighted tokens based on activation values"""
-        html_parts = []
-        sanitized_tokens = sanitize_tokens(tokens, non_breaking_space=False)
+        # Map feature indices to their positions in the activations tensor
+        highlight_positions = [all_feature_indices.index(f) for f in highlight_features]
+        tooltip_positions = [all_feature_indices.index(f) for f in tooltip_features]
 
-        if len(highlight_features) == 1:
-            # Single feature case
-            highlight_idx = all_feature_indices.index(highlight_features[0])
-            highlight_acts = activations[:, highlight_idx]
-            max_highlight = highlight_acts.max()
-            norm_acts = highlight_acts / (max_highlight + 1e-6)
+        # Create feature names mapping indices to their original feature numbers
+        activation_names = [
+            f"Feature {all_feature_indices[i]}" for i in range(len(all_feature_indices))
+        ]
 
-            for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
-                opacity = norm_acts[i].item()
-                color = f"rgba(255, 0, 0, {opacity:.3f})"
-
-                # Create tooltip content
-                tok_id = self.tokenizer.convert_tokens_to_ids(token)
-                tooltip_token = sanitize_token(
-                    token, keep_newline=False, non_breaking_space=False
-                )
-                tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
-                for feat in tooltip_features:
-                    feat_idx = all_feature_indices.index(feat)
-                    act_value = activations[i, feat_idx].item()
-                    tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
-
-                tooltip_content = "\n".join(tooltip_lines)
-                html_parts.append(
-                    create_token_html(san_token, (color, color), tooltip_content)
-                )
-        else:
-            # Two feature case
-            idx1, idx2 = [all_feature_indices.index(f) for f in highlight_features[:2]]
-            acts1, acts2 = activations[:, idx1], activations[:, idx2]
-            max1, max2 = acts1.max(), acts2.max()
-            norm1 = acts1 / (max1 + 1e-6)
-            norm2 = acts2 / (max2 + 1e-6)
-
-            for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
-                opacity1 = norm1[i].item()
-                opacity2 = norm2[i].item()
-                color1 = f"rgba(255, 0, 0, {opacity1:.3f})"
-                color2 = f"rgba(0, 0, 255, {opacity2:.3f})"
-
-                tok_id = self.tokenizer.convert_tokens_to_ids(token)
-                tooltip_token = sanitize_token(
-                    token, keep_newline=False, non_breaking_space=False
-                )
-                tooltip_lines = [f"Token {tok_id}: '{tooltip_token}'"]
-                for feat in tooltip_features:
-                    feat_idx = all_feature_indices.index(feat)
-                    act_value = activations[i, feat_idx].item()
-                    tooltip_lines.append(f"Feature {feat}: {act_value:.3f}")
-
-                tooltip_content = "\n".join(tooltip_lines)
-                html_parts.append(
-                    create_token_html(san_token, (color1, color2), tooltip_content)
-                )
-
-        return "".join(html_parts)
+        return create_highlighted_tokens_html(
+            tokens=tokens,
+            activations=activations,
+            tokenizer=self.tokenizer,
+            highlight_features=highlight_positions,
+            tooltip_features=tooltip_positions,
+            color1=(255, 0, 0),  # Red for first feature
+            color2=(
+                (0, 0, 255) if len(highlight_features) > 1 else None
+            ),  # Blue for second feature
+            activation_names=activation_names,
+            return_max_acts_str=return_max_acts,
+        )
 
     def _handle_analysis(self, _):
         """Handle the analysis button click"""
@@ -420,12 +370,10 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             # Parse display control features
             tooltip_features = parse_list_str(self.tooltip_features.value.strip())
 
-            # Ensure highlighted features are included in computation and tooltips
-            for h in highlight_features:
-                if h not in feature_indices:
-                    feature_indices.insert(0, h)
-                if h not in tooltip_features:
-                    tooltip_features.insert(0, h)
+            # Ensure all required features are included in computation
+            feature_indices = list(
+                dict.fromkeys(highlight_features + tooltip_features + feature_indices)
+            )
 
             text = self.text_input.value
             if text == "":
@@ -453,29 +401,18 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             with self.output_area:
                 self.output_area.clear_output()
 
-                # Create the HTML content as before
-                max_acts_html = []
-                for feat in tooltip_features:
-                    if feat in feature_indices:
-                        feat_idx = feature_indices.index(feat)
-                        max_act = activations[:, feat_idx].max().item()
-                        max_acts_html.append(f"Feature {feat} max: {max_act:.3f}")
-
-                max_acts_display = (
-                    "<div style='margin-bottom: 10px'><b>"
-                    + "<br>".join(max_acts_html)
-                    + "</b></div>"
-                )
-
-                html_content = self._create_html_highlight(
+                # Get HTML content and max activations string
+                html_content, max_acts_str = self._create_html_highlight(
                     tokens,
                     activations,
                     feature_indices,
                     highlight_features,
                     tooltip_features,
+                    return_max_acts=True
                 )
+
                 example_html = create_example_html(
-                    max_acts_display, html_content, static=True
+                    max_acts_str, html_content, static=True
                 )
 
                 self.current_html = create_base_html(
