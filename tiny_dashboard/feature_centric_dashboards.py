@@ -83,6 +83,8 @@ class OfflineFeatureCentricDashboard:
         self.window_size = window_size
         self.max_examples = max_examples
         self._setup_widgets()
+        self.use_absolute_max = False
+        self.feature_idx = None
 
     def _setup_widgets(self):
         """Initialize the dashboard widgets"""
@@ -95,15 +97,25 @@ class OfflineFeatureCentricDashboard:
             style={"description_width": "initial"},
         )
 
+        # Add checkbox for absolute max
+        self.use_absolute_max_checkbox = widgets.Checkbox(
+            value=False,
+            description="Use Absolute Max",
+            indent=False,
+            style={"description_width": "initial"},
+        )
+
         self.examples_output = widgets.Output()
         self.feature_selector.observe(self._handle_feature_selection, names="value")
+        self.use_absolute_max_checkbox.observe(self._handle_absolute_max_change, names="value")
 
     def _handle_feature_selection(self, change):
         """Handle feature selection, including validation of typed input"""
         try:
             feature_idx = int(change["new"])
             if feature_idx in self.max_activation_examples:
-                self._update_examples({"new": feature_idx})
+                self.feature_idx = feature_idx
+                self._update_examples()
             else:
                 with self.examples_output:
                     self.examples_output.clear_output()
@@ -115,12 +127,18 @@ class OfflineFeatureCentricDashboard:
                 self.examples_output.clear_output()
                 print("Please enter a valid feature number")
 
+    def _handle_absolute_max_change(self, change):
+        print(f"use_absolute_max changed to {change}")
+        self.use_absolute_max = change["new"]
+        self._update_examples()
+
     def _create_html_highlight(
         self,
         tokens: list[str],
         activations: list[float],
         max_idx: int,
         show_full: bool = False,
+        min_max_act: float = None,
     ) -> str:
         act_tensor = th.tensor(activations)
 
@@ -138,20 +156,26 @@ class OfflineFeatureCentricDashboard:
             highlight_features=0,  # Single feature case
             color1=(255, 0, 0),  # Red color
             activation_names=["Activation"],
+            min_max_act=min_max_act,
         )
 
-    def generate_html(self, feature_idx: int) -> str:
+    def generate_html(self, feature_idx: int, use_absolute_max: bool = False) -> str:
         examples = self.max_activation_examples[feature_idx]
 
         content_parts = []
+        min_max_act = None
+        if use_absolute_max:
+            min_max_act = examples[0][0]
         for max_act, tokens, token_acts in list(examples)[: self.max_examples]:
             max_idx = np.argmax(token_acts)
 
             # Create both versions
             collapsed_html = self._create_html_highlight(
-                tokens, token_acts, max_idx, False
+                tokens, token_acts, max_idx, False, min_max_act
             )
-            full_html = self._create_html_highlight(tokens, token_acts, max_idx, True)
+            full_html = self._create_html_highlight(
+                tokens, token_acts, max_idx, True, min_max_act
+            )
 
             content_parts.append(
                 create_example_html(max_act, collapsed_html, full_html)
@@ -164,21 +188,27 @@ class OfflineFeatureCentricDashboard:
         )
         return html_content
 
-    def _update_examples(self, change):
+    def _update_examples(self):
         """Update the examples display when a new feature is selected"""
         # Clear the output first
+        if self.feature_idx is None:
+            print("No feature selected")
+            return
         self.examples_output.clear_output(
             wait=True
         )  # wait=True for smoother transition
-
-        feature_idx = change["new"]
         with self.examples_output:
-            display(HTML(self.generate_html(feature_idx)))
+            display(HTML(self.generate_html(self.feature_idx, self.use_absolute_max)))
 
     def display(self):
         """Display the dashboard"""
 
-        dashboard = widgets.VBox([self.feature_selector, self.examples_output])
+        dashboard = widgets.VBox(
+            [
+                widgets.HBox([self.feature_selector, self.use_absolute_max_checkbox]),
+                self.examples_output,
+            ]
+        )
         display(dashboard)
 
     def export_to_html(self, output_path: str, feature_to_export: int):

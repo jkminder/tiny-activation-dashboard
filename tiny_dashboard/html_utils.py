@@ -118,6 +118,7 @@ def create_highlighted_tokens_html(
     highlight_features: list[int] | int = None,  # Indices into activations tensor
     tooltip_features: list[int] | int | None = None,  # None = show all features
     # Visualization options
+    min_max_act: float = None,
     color1: tuple[int, int, int] = (255, 0, 0),
     color2: tuple[int, int, int] = None,
     relative_normalization: bool = True,  # False = normalize against global max
@@ -179,6 +180,8 @@ def create_highlighted_tokens_html(
 
     # Handle normalization
     max_vals = [acts[~acts.isnan()].max() for acts in highlight_acts]
+    if min_max_act is not None:
+        max_vals = [max(min_max_act, max_val) for max_val in max_vals]
     if relative_normalization:
         # Normalize each feature independently
         norm_acts = [
