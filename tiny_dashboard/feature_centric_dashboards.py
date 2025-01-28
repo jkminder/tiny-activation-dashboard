@@ -42,6 +42,7 @@ class OfflineFeatureCentricDashboard:
         db_path: Path | str,
         tokenizer: AutoTokenizer,
         column_name: str = "examples",
+        table_name: str = "data_table",
         window_size: int = 50,
         max_examples: int = 30,
     ):
@@ -57,8 +58,10 @@ class OfflineFeatureCentricDashboard:
             tokenizer (AutoTokenizer): A HuggingFace tokenizer used for processing the model's input.
             window_size (int, optional): The number of tokens to display before and after the token with the maximum activation. Defaults to 50.
             max_examples (int, optional): The maximum number of examples to display for each feature. Defaults to 30.
+            column_name (str, optional): The name of the column to read from. Defaults to "examples".
+            table_name (str, optional): The name of the table to read from. Defaults to "data_table".
         """
-        max_activation_examples = LazyReadDict(db_path, column_name)
+        max_activation_examples = LazyReadDict(db_path, column_name, table_name)
         return cls(max_activation_examples, tokenizer, window_size, max_examples)
 
     def __init__(
@@ -408,7 +411,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                     feature_indices,
                     highlight_features,
                     tooltip_features,
-                    return_max_acts=True
+                    return_max_acts=True,
                 )
 
                 example_html = create_example_html(

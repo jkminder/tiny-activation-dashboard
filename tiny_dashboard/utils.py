@@ -97,22 +97,24 @@ class DummyModel:
 
 
 class LazyReadDict:
-    def __init__(self, db_path, column_name: str):
+    def __init__(self, db_path, column_name: str, table_name="data_table"):
         self.db_path = db_path
         self.column_name = column_name
+        self.table_name = table_name
         self._init_keys()
 
     def _init_keys(self):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT key FROM data_table")
+            cursor.execute(f"SELECT key FROM {self.table_name}")
             self._keys = [row[0] for row in cursor.fetchall()]
 
     def __getitem__(self, key):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                f"SELECT {self.column_name} FROM data_table WHERE key = ?", (key,)
+                f"SELECT {self.column_name} FROM {self.table_name} WHERE key = ?",
+                (key,),
             )
             rows = cursor.fetchall()
 
