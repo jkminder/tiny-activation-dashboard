@@ -12,6 +12,8 @@ This repository provides minimal implementations of activations visualization wi
 - An online feature dashboard, where you compute and display activations on some custom text
 - An offline feature dashboard, which can display precomputed activation examples.
 
+To get an overview of all the features you can check the [demo on colab](https://colab.research.google.com/github/Butanium/tiny-activation-dashboard/blob/main/demo.ipynb)!
+
 Online dashboard demo:
 ![image](https://github.com/user-attachments/assets/17d176bf-e8e5-471b-bbbf-dc3286f16907)
 
