@@ -1,4 +1,5 @@
 from pathlib import Path
+import warnings
 from .utils import (
     sanitize_html_content,
     update_template_string,
@@ -179,18 +180,17 @@ def create_highlighted_tokens_html(
         raise ValueError("Activations must be non-negative floats")
 
     # Handle normalization
-    max_vals = [acts[~acts.isnan()].max() for acts in highlight_acts]
-    if min_max_act is not None:
-        max_vals = [max(min_max_act, max_val) for max_val in max_vals]
-    if relative_normalization:
-        # Normalize each feature independently
-        norm_acts = [
-            acts / (max_val + 1e-6) for acts, max_val in zip(highlight_acts, max_vals)
-        ]
+    if min_max_act is None:
+        if relative_normalization:
+            max_vals = [acts[~acts.isnan()].max() for acts in highlight_acts]
+        else:
+            max_val = max(acts[~acts.isnan()].max() for acts in highlight_acts)
+            max_vals = [max_val] * len(highlight_acts)
     else:
-        # Global normalization across highlighted features
-        max_val = max(acts[~acts.isnan()].max() for acts in highlight_acts)
-        norm_acts = [acts / (max_val + 1e-6) for acts in highlight_acts]
+        max_vals = [min_max_act] * len(highlight_acts)
+    norm_acts = [
+        acts / (max_val + 1e-6) for acts, max_val in zip(highlight_acts, max_vals)
+    ]
 
     # Generate HTML for each token
     html_parts = []
@@ -201,6 +201,15 @@ def create_highlighted_tokens_html(
         token_colors = []
         for norm_act, (r, g, b) in zip(norm_acts, [color1, color2]):
             intensity = norm_act[i].item() if not (norm_act[i].isnan()) else 0
+            if intensity > 1:
+                if min_max_act is None:
+                    raise RuntimeError(
+                        "Got an intensity > 1 but no min_max_act was not provided"
+                    )
+                warnings.warn(
+                    "Warning:\nGot an intensity > 1, which means acts>min_max_act. Clamping to 1"
+                )
+                intensity = 1
             token_colors.append(f"rgba({r}, {g}, {b}, {intensity:.3f})")
 
         # If only one feature, duplicate the color
@@ -232,7 +241,9 @@ def create_highlighted_tokens_html(
     if return_max_acts_str:
         max_acts_str = "<br>".join(
             f"{activation_names[idx]}: {mv.item():.3f}"
-            for idx, mv in enumerate(max_vals)
+            for idx, mv in enumerate(
+                [acts[~acts.isnan()].max() for acts in highlight_acts]
+            )
         )
         tooltip_max_acts = [
             activations[:, feat][~activations[:, feat].isnan()].max().item()
