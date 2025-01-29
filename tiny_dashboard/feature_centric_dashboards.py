@@ -238,12 +238,14 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         tokenizer: AutoTokenizer,
         model: LanguageModel | None = None,
         window_size: int = 50,
+        max_acts: dict[int, float] | None = None,
     ):
         self.tokenizer = tokenizer
         self.model = model
         self.window_size = window_size
         self.use_chat_formatting = False
         self.current_html = None
+        self.max_acts = max_acts
         self._setup_widgets()
 
     @abstractmethod
@@ -354,6 +356,15 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             width="auto", display="inline-flex"
         )
 
+        # Add new min_max_act widget after existing widgets
+        self.min_max_act_input = widgets.Text(
+            placeholder="empty, 'auto' or float value",
+            description="Max act:",
+            value="",
+            continuous_update=False,
+            style={"description_width": "initial"},
+        )
+
     def _create_html_highlight(
         self,
         tokens: list[str],
@@ -373,18 +384,38 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             f"Feature {all_feature_indices[i]}" for i in range(len(all_feature_indices))
         ]
 
+        # Handle min_max_act value
+        min_max_act = None
+        min_max_act_value = self.min_max_act_input.value.strip().lower()
+        
+        if min_max_act_value == "":
+            min_max_act = None
+        elif min_max_act_value != "auto":
+            try:
+                min_max_act = float(min_max_act_value)
+            except ValueError:
+                raise ValueError("Min-max act must be empty, 'auto' or a float value")
+        elif min_max_act_value == "auto" and self.max_acts is not None:
+            # Use the first highlight feature's max_act value
+            feature = highlight_features[0]
+            if feature in self.max_acts:
+                min_max_act = self.max_acts[feature]
+            else:
+                raise ValueError(f"No max activation value found for feature {feature}")
+        elif min_max_act_value == "auto":
+            raise ValueError("Cannot use 'auto' without max_acts dictionary provided during initialization")
+
         return create_highlighted_tokens_html(
             tokens=tokens,
             activations=activations,
             tokenizer=self.tokenizer,
             highlight_features=highlight_positions,
             tooltip_features=tooltip_positions,
-            color1=(255, 0, 0),  # Red for first feature
-            color2=(
-                (0, 0, 255) if len(highlight_features) > 1 else None
-            ),  # Blue for second feature
+            color1=(255, 0, 0),
+            color2=(0, 0, 255) if len(highlight_features) > 1 else None,
             activation_names=activation_names,
             return_max_acts_str=return_max_acts,
+            min_max_act=min_max_act,
         )
 
     def _handle_analysis(self, _):
@@ -510,6 +541,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 self.feature_input,
                 self.highlight_feature,
                 self.tooltip_features,
+                self.min_max_act_input,
             ],
             layout=widgets.Layout(
                 display="flex",

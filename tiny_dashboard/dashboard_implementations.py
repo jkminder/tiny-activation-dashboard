@@ -16,6 +16,7 @@ class CrosscoderOnlineFeatureDashboard(AbstractOnlineFeatureCentricDashboard):
         collect_layer: int,
         window_size: int = 50,
         crosscoder_device: str | None = None,
+        max_acts: dict[int, float] | None = None,
     ):
         """
         Args:
@@ -26,7 +27,7 @@ class CrosscoderOnlineFeatureDashboard(AbstractOnlineFeatureCentricDashboard):
             window_size: Number of tokens to show before/after max activation
             crosscoder_device: Optional device to move crosscoder inputs to
         """
-        super().__init__(instruct_model.tokenizer, instruct_model, window_size)
+        super().__init__(instruct_model.tokenizer, instruct_model, window_size, max_acts)
         self.base_model = base_model
         self.crosscoder = crosscoder
         self.crosscoder_device = crosscoder_device
