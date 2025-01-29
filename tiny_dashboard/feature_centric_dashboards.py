@@ -107,7 +107,9 @@ class OfflineFeatureCentricDashboard:
 
         self.examples_output = widgets.Output()
         self.feature_selector.observe(self._handle_feature_selection, names="value")
-        self.use_absolute_max_checkbox.observe(self._handle_absolute_max_change, names="value")
+        self.use_absolute_max_checkbox.observe(
+            self._handle_absolute_max_change, names="value"
+        )
 
     def _handle_feature_selection(self, change):
         """Handle feature selection, including validation of typed input"""
@@ -239,6 +241,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         model: LanguageModel | None = None,
         window_size: int = 50,
         max_acts: dict[int, float] | None = None,
+        second_highlight_color: tuple[int, int, int] | None = None,
     ):
         self.tokenizer = tokenizer
         self.model = model
@@ -246,6 +249,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         self.use_chat_formatting = False
         self.current_html = None
         self.max_acts = max_acts
+        self.second_highlight_color = second_highlight_color
         self._setup_widgets()
 
     @abstractmethod
@@ -387,7 +391,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         # Handle min_max_act value
         min_max_act = None
         min_max_act_value = self.min_max_act_input.value.strip().lower()
-        
+
         if min_max_act_value == "":
             min_max_act = None
         elif min_max_act_value != "auto":
@@ -403,7 +407,9 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             else:
                 raise ValueError(f"No max activation value found for feature {feature}")
         elif min_max_act_value == "auto":
-            raise ValueError("Cannot use 'auto' without max_acts dictionary provided during initialization")
+            raise ValueError(
+                "Cannot use 'auto' without max_acts dictionary provided during initialization"
+            )
 
         return create_highlighted_tokens_html(
             tokens=tokens,
@@ -412,7 +418,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             highlight_features=highlight_positions,
             tooltip_features=tooltip_positions,
             color1=(255, 0, 0),
-            color2=(0, 0, 255) if len(highlight_features) > 1 else None,
+            color2=self.second_highlight_color,
             activation_names=activation_names,
             return_max_acts_str=return_max_acts,
             min_max_act=min_max_act,
@@ -620,7 +626,7 @@ class OnlineFeatureCentricDashboard(AbstractOnlineFeatureCentricDashboard):
         if generate_model_response is not None and model is None:
             model = DummyModel()
             warnings.warn(
-                "Model is not set, using DummyModel as a placeholder to allow for response generation using your custom function"
+                "Warning:\nModel is not set, using DummyModel as a placeholder to allow for response generation using your custom function"
             )
         super().__init__(tokenizer, model, window_size, **kwargs)
         self._get_feature_activation = get_feature_activation
