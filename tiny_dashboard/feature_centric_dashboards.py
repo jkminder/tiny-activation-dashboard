@@ -130,7 +130,6 @@ class OfflineFeatureCentricDashboard:
                 print("Please enter a valid feature number")
 
     def _handle_absolute_max_change(self, change):
-        print(f"use_absolute_max changed to {change}")
         self.use_absolute_max = change["new"]
         self._update_examples()
 
