@@ -38,6 +38,7 @@ def create_example_html(
         click_to_expand = ""
         end_of_collapsed = ""
         is_static = "true"
+        full_html = collapsed_html
     else:
         click_to_expand = click_to_expand_template
         end_of_collapsed = end_of_collapsed_template
