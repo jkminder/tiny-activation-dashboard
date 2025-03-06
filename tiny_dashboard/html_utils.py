@@ -28,7 +28,7 @@ with open(template_dir / "token.html", "r") as f:
 
 
 def create_example_html(
-    max_act: float | str, collapsed_html: str, full_html: str = "", static=False
+    max_act: float | str, collapsed_html: str, full_html: str = "", static=False, latex_button: str = ""
 ) -> str:
     """Create HTML for a single example using the example template."""
     if isinstance(max_act, float):
@@ -51,6 +51,7 @@ def create_example_html(
             "full_html": full_html,
             "click_to_expand_html": click_to_expand,
             "static": is_static,
+            "latex_button": latex_button,
         },
     )
 

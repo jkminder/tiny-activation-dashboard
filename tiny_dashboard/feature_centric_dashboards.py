@@ -8,6 +8,7 @@ import torch as th
 from IPython.display import HTML, display
 from abc import ABC, abstractmethod
 from typing import Callable
+import json
 
 from transformers import AutoTokenizer
 from nnsight import LanguageModel
@@ -125,7 +126,7 @@ class OfflineFeatureCentricDashboard:
                     print(
                         f"Feature {feature_idx} not found. Available features: {self.available_features}"
                     )
-        except ValueError:
+        except ValueError as ve:
             with self.examples_output:
                 self.examples_output.clear_output()
                 print("Please enter a valid feature number")
@@ -164,11 +165,110 @@ class OfflineFeatureCentricDashboard:
     def generate_html(self, feature_idx: int, use_absolute_max: bool = False) -> str:
         examples = self.max_activation_examples[feature_idx]
 
-        content_parts = []
+        # Generate LaTeX preamble once for the feature
+        dummy_tokens = examples[0][1]
+        dummy_acts = th.tensor(examples[0][2]).unsqueeze(1)
+        latex_preamble = convert_to_latex(
+            tokens=dummy_tokens,
+            activations=dummy_acts,
+            feature_indices=[feature_idx],
+            max_acts={feature_idx: examples[0][0]} if use_absolute_max else None,
+        )["preamble"]
+
+        # Add JavaScript for clipboard operations - using a more reliable method
+        clipboard_js = """
+        <script>
+        function copyToClipboard(elementId) {
+            const el = document.getElementById(elementId);
+            const text = el.textContent || el.innerText;
+            
+            // Create a temporary textarea element to copy from
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'absolute';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            
+            // Select and copy the text
+            textarea.select();
+            document.execCommand('copy');
+            
+            // Clean up
+            document.body.removeChild(textarea);
+            
+            // Show feedback
+            const button = document.querySelector(`button[data-target="${elementId}"]`);
+            if (button) {
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 2000);
+            }
+        }
+        </script>
+        """
+
+        # Additional CSS for LaTeX buttons - improved styling
+        latex_css = """
+        <style>
+        .latex-buttons-container {
+            margin: 10px 0;
+            text-align: right;
+        }
+        
+        .latex-button {
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            color: #333;
+            transition: background-color 0.2s;
+        }
+        
+        .latex-button:hover {
+            background-color: #e9ecef;
+        }
+        
+        .example-latex-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 100;
+        }
+        
+        .example-container {
+            position: relative !important;
+        }
+        
+        .copy-msg {
+            position: fixed;
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        </style>
+        """
+
+        # Create the LaTeX preamble copy button
+        preamble_button_html = f"""
+        <div class="latex-buttons-container">
+            <button class="latex-button" data-target="{feature_idx}_preamble" onclick="copyToClipboard('{feature_idx}_preamble')">Copy LaTeX Preamble</button>
+            <div id="{feature_idx}_preamble" style="display:none;">{latex_preamble}</div>
+        </div>
+        """
+
+        content_parts = [preamble_button_html]
         min_max_act = None
         if use_absolute_max:
             min_max_act = examples[0][0]
-        for max_act, tokens, token_acts in list(examples)[: self.max_examples]:
+        for i, (max_act, tokens, token_acts) in enumerate(list(examples)[: self.max_examples]):
             max_idx = np.argmax(token_acts)
 
             # Create both versions
@@ -179,15 +279,40 @@ class OfflineFeatureCentricDashboard:
                 tokens, token_acts, max_idx, True, min_max_act
             )
 
-            content_parts.append(
-                create_example_html(max_act, collapsed_html, full_html)
-            )
+            # Generate LaTeX for this example
+            act_tensor = th.tensor(token_acts).unsqueeze(1)
+            latex_content = convert_to_latex(
+                tokens=tokens,
+                activations=act_tensor,
+                feature_indices=[feature_idx],
+                max_acts={feature_idx: examples[0][0]} if use_absolute_max else None,
+            )["content"]
+            
+            
+            # Add LaTeX button to the example - create a unique ID for each example
+            example_id = f"{feature_idx}_example_{i}"
+
+            # Create a standalone button that will be positioned absolutely
+            latex_button = f"""
+            <button class="latex-button example-latex-button" data-target="{example_id}" onclick="copyToClipboard('{example_id}')">Copy LaTeX</button>
+            <div id="{example_id}" style="display:none;">{latex_content}</div>
+            """
+
+            # Create example HTML
+            example_html = create_example_html(max_act, collapsed_html, full_html, latex_button=latex_button)
+            
+            
+            content_parts.append(example_html)
 
         # Display the HTML content all at once
         html_content = create_base_html(
             title=f"Feature {feature_idx} Examples",
             content=content_parts,
         )
+        
+        # Add LaTeX specific CSS and JS by inserting before the closing </head> tag
+        html_content = html_content.replace('</head>', f'{latex_css}{clipboard_js}</head>')
+        
         return html_content
 
     def _update_examples(self):
@@ -369,16 +494,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             style={"description_width": "initial"},
         )
 
-        # Add LaTeX export button
-        self.latex_export_button = widgets.Button(
-            description="Export LaTeX",
-            button_style="info",
-            disabled=True,  # Initially disabled until analysis is run
-            layout=widgets.Layout(width="auto"),
-        )
-        self.latex_export_button.on_click(self._handle_latex_export)
-
-        # Add output area for LaTeX
+        # Keep the LaTeX output area for potential future use
         self.latex_output = widgets.Output()
 
     def _create_html_highlight(
@@ -436,119 +552,6 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             min_max_act=min_max_act,
         )
 
-    def _handle_latex_export(self, _):
-        """Handle exporting the current analysis to LaTeX format"""
-        if not hasattr(self, "_last_analysis"):
-            with self.latex_output:
-                self.latex_output.clear_output()
-                print("No analysis to export. Run analysis first.")
-                return
-
-        with self.latex_output:
-            self.latex_output.clear_output()
-
-            # Get max_act value if specified
-            min_max_act_value = self.min_max_act_input.value.strip().lower()
-            max_acts = None
-            if min_max_act_value == "auto" and self.max_acts is not None:
-                max_acts = self.max_acts
-            elif min_max_act_value and min_max_act_value != "auto":
-                try:
-                    max_val = float(min_max_act_value)
-                    max_acts = {
-                        feat: max_val for feat in self._last_analysis["feature_indices"]
-                    }
-                except ValueError:
-                    print("Invalid max activation value. Using local normalization.")
-
-            latex_output = convert_to_latex(
-                self._last_analysis["tokens"],
-                self._last_analysis["activations"],
-                self._last_analysis["feature_indices"],
-                max_acts=max_acts,
-            )
-
-            # Escape HTML content
-            def escape_html(text):
-                return (
-                    text.replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                    .replace('"', "&quot;")
-                    .replace("'", "&#39;")
-                )
-
-            # Create a simple box style with copy button
-            box_style = """
-            <style>
-            .latex-box {
-                background: #f8f8f8;
-                border: 1px solid #ddd;
-                padding: 10px;
-                margin: 10px 0;
-                font-family: monospace;
-                white-space: pre;
-                position: relative;
-            }
-            .copy-button {
-                position: absolute;
-                top: 5px;
-                right: 5px;
-                padding: 5px;
-                background: #fff;
-                border: 1px solid #ddd;
-                border-radius: 3px;
-                cursor: pointer;
-            }
-            .section-title {
-                font-weight: bold;
-                margin-top: 20px;
-                margin-bottom: 5px;
-            }
-            </style>
-            """
-
-            # JavaScript for copy functionality
-            copy_script = """
-            <script>
-            function copyToClipboard(elementId) {
-                const el = document.getElementById(elementId);
-                const text = el.textContent;
-                navigator.clipboard.writeText(text).then(() => {
-                    const button = el.parentElement.querySelector('.copy-button');
-                    const originalText = button.textContent;
-                    button.textContent = 'Copied!';
-                    setTimeout(() => {
-                        button.textContent = originalText;
-                    }, 2000);
-                });
-            }
-            </script>
-            """
-
-            # Function to create a box with copy button
-            def create_box(content, box_id, title):
-                escaped_content = escape_html(content)
-                return f"""
-                <div class="section-title">{title}</div>
-                <div class="latex-box">
-                    <button class="copy-button" onclick="copyToClipboard('{box_id}')">Copy</button>
-                    <pre id="{box_id}">{escaped_content}</pre>
-                </div>
-                """
-
-            # Create the complete HTML
-            from IPython.display import HTML
-
-            html_output = (
-                box_style
-                + copy_script
-                + create_box(latex_output["preamble"], "preamble-box", "LaTeX Preamble")
-                + create_box(latex_output["content"], "content-box", "LaTeX Content")
-            )
-
-            display(HTML(html_output))
-
     def _handle_analysis(self, _):
         """Handle the analysis button click"""
         try:
@@ -557,7 +560,10 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             feature_indices = parse_list_str(f_idx_str)
 
             # Parse features for highlighting - now accepts 1 or 2 features
-            highlight_features = parse_list_str(self.highlight_feature.value.strip())
+            if self.highlight_feature.value.strip() == "":
+                highlight_features = [feature_indices[0]]
+            else:
+                highlight_features = parse_list_str(self.highlight_feature.value.strip())
             self.highlight_features = highlight_features
             if len(highlight_features) not in (1, 2):
                 raise ValueError("Please enter one or two features to highlight")
@@ -606,13 +612,117 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                     return_max_acts=True,
                 )
 
+                # Generate LaTeX for this example
+                latex_output = convert_to_latex(
+                    tokens,
+                    activations,
+                    feature_indices,
+                    max_acts=self.max_acts,
+                )
+                
+                # Create unique ID for this analysis
+                example_id = f"analysis_{int(time.time())}"
+                
+                # Create LaTeX button for the example
+                latex_button = f"""
+                <button class="latex-button example-latex-button" data-target="{example_id}" onclick="copyToClipboard('{example_id}')">Copy LaTeX</button>
+                <div id="{example_id}" style="display:none;">{latex_output['content']}</div>
+                """
+
+                # Create LaTeX preamble button
+                preamble_id = f"preamble_{int(time.time())}"
+                preamble_button_html = f"""
+                <div class="latex-buttons-container">
+                    <button class="latex-button" data-target="{preamble_id}" onclick="copyToClipboard('{preamble_id}')">Copy LaTeX Preamble</button>
+                    <div id="{preamble_id}" style="display:none;">{latex_output['preamble']}</div>
+                </div>
+                """
+
+                # Create example HTML with LaTeX button
                 example_html = create_example_html(
-                    max_acts_str, html_content, static=True
+                    max_acts_str, html_content, static=True, latex_button=latex_button
                 )
 
+                # Add LaTeX CSS and JS
+                latex_css = """
+                <style>
+                .latex-buttons-container {
+                    margin: 10px 0;
+                    text-align: right;
+                }
+                
+                .latex-button {
+                    background-color: #f8f9fa;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    color: #333;
+                    transition: background-color 0.2s;
+                }
+                
+                .latex-button:hover {
+                    background-color: #e9ecef;
+                }
+                
+                .example-latex-button {
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    z-index: 100;
+                }
+                
+                .example-container {
+                    position: relative !important;
+                }
+                </style>
+                """
+                
+                clipboard_js = """
+                <script>
+                function copyToClipboard(elementId) {
+                    const el = document.getElementById(elementId);
+                    const text = el.textContent || el.innerText;
+                    
+                    // Create a temporary textarea element to copy from
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.setAttribute('readonly', '');
+                    textarea.style.position = 'absolute';
+                    textarea.style.left = '-9999px';
+                    document.body.appendChild(textarea);
+                    
+                    // Select and copy the text
+                    textarea.select();
+                    document.execCommand('copy');
+                    
+                    // Clean up
+                    document.body.removeChild(textarea);
+                    
+                    // Show feedback
+                    const button = document.querySelector(`button[data-target="${elementId}"]`);
+                    if (button) {
+                        const originalText = button.textContent;
+                        button.textContent = 'Copied!';
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                        }, 2000);
+                    }
+                }
+                </script>
+                """
+
+                # Combine preamble button and example HTML
+                content = preamble_button_html + example_html
+
                 self.current_html = create_base_html(
-                    title="Feature Analysis", content=example_html
+                    title="Feature Analysis", content=content
                 )
+                
+                # Add LaTeX specific CSS and JS by inserting before the closing </head> tag
+                self.current_html = self.current_html.replace('</head>', f'{latex_css}{clipboard_js}</head>')
+                
                 # Enable the save button now that we have content
                 self.save_button.disabled = False
 
@@ -623,23 +733,18 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                     "feature_indices": feature_indices,
                 }
 
-                # Enable the LaTeX export button
-                self.latex_export_button.disabled = False
-
                 # Display the HTML
                 display(HTML(self.current_html))
 
-        except ValueError:
+        except ValueError as ve:
             self.current_html = None
             self.save_button.disabled = True
-            self.latex_export_button.disabled = True  # Disable LaTeX export on error
             with self.output_area:
                 self.output_area.clear_output()
                 print("Please enter a valid feature number")
         except Exception as e:
             self.current_html = None
             self.save_button.disabled = True
-            self.latex_export_button.disabled = True  # Disable LaTeX export on error
             with self.output_area:
                 self.output_area.clear_output()
                 traceback.print_exc()
@@ -714,7 +819,6 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                     children=[self.save_button],
                     layout=widgets.Layout(margin="0 20px 0 0"),
                 ),
-                self.latex_export_button,
             ],
             layout=widgets.Layout(
                 display="flex",
@@ -732,7 +836,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 inputs_layout,
                 buttons_layout,
                 self.output_area,
-                self.latex_output,  # Add LaTeX output area
+                self.latex_output,  # Keep LaTeX output area
             ],
             layout=widgets.Layout(width="100%", overflow="visible"),
         )
