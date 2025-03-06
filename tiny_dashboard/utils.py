@@ -1,6 +1,7 @@
 import ast
 import sqlite3
 import json
+import torch as th
 
 
 def parse_list_str(s: str) -> list[int]:
@@ -130,3 +131,116 @@ class LazyReadDict:
 
     def __contains__(self, key):
         return key in self._keys
+
+
+def convert_to_latex(
+    tokens: list[str],
+    activations: th.Tensor,
+    feature_indices: list[int],
+    max_acts: dict[int] | None = None,
+) -> str:
+    """Convert tokens and their activations to LaTeX format."""
+    if activations.dim() == 1:
+        activations = activations.unsqueeze(1)
+
+    # Handle normalization based on max_acts if provided
+    if max_acts is not None and len(feature_indices) > 0:
+        max_act = max_acts.get(feature_indices[0])
+        if max_act is not None:
+            norm_acts = activations / max_act
+            curr_max = activations.max().item()
+        else:
+            max_acts = activations.max(dim=0)[0]
+            norm_acts = activations / max_acts.unsqueeze(0)
+            curr_max = activations.max().item()
+    else:
+        max_acts = activations.max(dim=0)[0]
+        norm_acts = activations / max_acts.unsqueeze(0)
+        curr_max = activations.max().item()
+
+    # Convert activations to color specifications
+    colors = []
+    for i in range(len(tokens)):
+        opacity = min(100, max(0, int(norm_acts[i, 0].item() * 100)))
+        colors.append(f"red!{opacity}")
+
+    def latex_escape(s):
+        """Escape special characters and detect newlines"""
+        newline = "\n" in s
+        # First handle Unicode characters and special tokens
+        if s in [" ", "Ġ", "▁"]:
+            s = " "
+        else:
+            s = s.replace("▁", " ").replace("Ġ", " ")
+
+        # Handle LaTeX special characters
+        s = (
+            s.replace("\\", r"\textbackslash{}")
+            .replace("{", r"\{")
+            .replace("}", r"\}")
+            .replace("_", r"\_")
+            .replace("^", r"\^{}")
+            .replace("$", r"\$")
+            .replace("#", r"\#")
+            .replace("%", r"\%")
+            .replace("&", r"\&")
+            .replace("~", r"\~{}")
+            .replace("\n", r"\textbackslash n")
+        )
+
+        return s, newline
+
+    # Generate the preamble
+    preamble = [
+        "\\newcommand{\\hlbg}[2]{%",
+        "  \\setlength{\\fboxsep}{0pt}%    no horizontal/vertical padding",
+        "  \\setlength{\\fboxrule}{0pt}%   no rule/border around the box",
+        "  \\colorbox{#1}{\\strut #2}%",
+        "}",
+        "",
+        "% 2) Define a listing style:",
+        "\\lstdefinestyle{colorchars}{",
+        "  basicstyle=\\sffamily\\small,",
+        "  columns=fixed,",
+        "  escapechar=|,",
+        "  keepspaces=true,",
+        "  showstringspaces=false,",
+        "  breaklines=true,",
+        "  breakatwhitespace=false,",
+        "}",
+    ]
+
+    # Build the content
+    content_lines = []
+
+    # Header with feature info
+    header = (
+        "  \\begin{tabular}{|p{0.95\\columnwidth}|}  % Fixed width relative to column width\n"
+        "    \\hline\n"
+        "\\cellcolor{gray!20}\\begin{minipage}[t]{0.95\\columnwidth}   % Match width with tabular\n"
+        "\\begin{lstlisting}[style=colorchars,aboveskip=-5pt,belowskip=0pt]\n"
+        f"|\\textbf{{Feature {feature_indices[0]}}}|\n"
+        f"|Max Activation: {curr_max:.3f}|\\end{{lstlisting}}\n"
+        "\\end{minipage} \\\\\n"
+    )
+
+    # Token content
+    token_content = (
+        "\\begin{minipage}[t]{0.95\\columnwidth}  % Match width with tabular\n"
+        "\\begin{lstlisting}[style=colorchars,aboveskip=-5pt,belowskip=3pt,breaklines=true,breakatwhitespace=false]\n"
+    )
+
+    # Add tokens with their colors
+    current_line = []
+    for token, color in zip(tokens, colors):
+        escaped_token, newline = latex_escape(token)
+        token_str = f"|\\allowbreak\\hlbg{{{color}}}{{{escaped_token}}}|"
+        current_line.append(token_str)
+        if newline:
+            current_line.append("\n")
+    token_content += "".join(current_line) + "\\end{lstlisting}\n"
+    token_content += "\\end{minipage} \\\\ \\hline\n"
+    token_content += "\\end{tabular}"
+
+    # Combine all parts
+    return {"preamble": "\n".join(preamble), "content": header + token_content}

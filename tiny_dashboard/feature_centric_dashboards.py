@@ -18,6 +18,7 @@ from .utils import (
     DummyModel,
     sanitize_token,
     LazyReadDict,
+    convert_to_latex,
 )
 from .html_utils import (
     create_example_html,
@@ -368,6 +369,18 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             style={"description_width": "initial"},
         )
 
+        # Add LaTeX export button
+        self.latex_export_button = widgets.Button(
+            description="Export LaTeX",
+            button_style="info",
+            disabled=True,  # Initially disabled until analysis is run
+            layout=widgets.Layout(width="auto"),
+        )
+        self.latex_export_button.on_click(self._handle_latex_export)
+
+        # Add output area for LaTeX
+        self.latex_output = widgets.Output()
+
     def _create_html_highlight(
         self,
         tokens: list[str],
@@ -422,6 +435,119 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             return_max_acts_str=return_max_acts,
             min_max_act=min_max_act,
         )
+
+    def _handle_latex_export(self, _):
+        """Handle exporting the current analysis to LaTeX format"""
+        if not hasattr(self, "_last_analysis"):
+            with self.latex_output:
+                self.latex_output.clear_output()
+                print("No analysis to export. Run analysis first.")
+                return
+
+        with self.latex_output:
+            self.latex_output.clear_output()
+
+            # Get max_act value if specified
+            min_max_act_value = self.min_max_act_input.value.strip().lower()
+            max_acts = None
+            if min_max_act_value == "auto" and self.max_acts is not None:
+                max_acts = self.max_acts
+            elif min_max_act_value and min_max_act_value != "auto":
+                try:
+                    max_val = float(min_max_act_value)
+                    max_acts = {
+                        feat: max_val for feat in self._last_analysis["feature_indices"]
+                    }
+                except ValueError:
+                    print("Invalid max activation value. Using local normalization.")
+
+            latex_output = convert_to_latex(
+                self._last_analysis["tokens"],
+                self._last_analysis["activations"],
+                self._last_analysis["feature_indices"],
+                max_acts=max_acts,
+            )
+
+            # Escape HTML content
+            def escape_html(text):
+                return (
+                    text.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;")
+                    .replace("'", "&#39;")
+                )
+
+            # Create a simple box style with copy button
+            box_style = """
+            <style>
+            .latex-box {
+                background: #f8f8f8;
+                border: 1px solid #ddd;
+                padding: 10px;
+                margin: 10px 0;
+                font-family: monospace;
+                white-space: pre;
+                position: relative;
+            }
+            .copy-button {
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                padding: 5px;
+                background: #fff;
+                border: 1px solid #ddd;
+                border-radius: 3px;
+                cursor: pointer;
+            }
+            .section-title {
+                font-weight: bold;
+                margin-top: 20px;
+                margin-bottom: 5px;
+            }
+            </style>
+            """
+
+            # JavaScript for copy functionality
+            copy_script = """
+            <script>
+            function copyToClipboard(elementId) {
+                const el = document.getElementById(elementId);
+                const text = el.textContent;
+                navigator.clipboard.writeText(text).then(() => {
+                    const button = el.parentElement.querySelector('.copy-button');
+                    const originalText = button.textContent;
+                    button.textContent = 'Copied!';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                    }, 2000);
+                });
+            }
+            </script>
+            """
+
+            # Function to create a box with copy button
+            def create_box(content, box_id, title):
+                escaped_content = escape_html(content)
+                return f"""
+                <div class="section-title">{title}</div>
+                <div class="latex-box">
+                    <button class="copy-button" onclick="copyToClipboard('{box_id}')">Copy</button>
+                    <pre id="{box_id}">{escaped_content}</pre>
+                </div>
+                """
+
+            # Create the complete HTML
+            from IPython.display import HTML
+
+            html_output = (
+                box_style
+                + copy_script
+                + create_box(latex_output["preamble"], "preamble-box", "LaTeX Preamble")
+                + create_box(latex_output["content"], "content-box", "LaTeX Content")
+            )
+
+            display(HTML(html_output))
 
     def _handle_analysis(self, _):
         """Handle the analysis button click"""
@@ -490,18 +616,30 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 # Enable the save button now that we have content
                 self.save_button.disabled = False
 
+                # Store the analysis results for LaTeX export
+                self._last_analysis = {
+                    "tokens": tokens,
+                    "activations": activations,
+                    "feature_indices": feature_indices,
+                }
+
+                # Enable the LaTeX export button
+                self.latex_export_button.disabled = False
+
                 # Display the HTML
                 display(HTML(self.current_html))
 
         except ValueError:
             self.current_html = None
             self.save_button.disabled = True
+            self.latex_export_button.disabled = True  # Disable LaTeX export on error
             with self.output_area:
                 self.output_area.clear_output()
                 print("Please enter a valid feature number")
         except Exception as e:
             self.current_html = None
             self.save_button.disabled = True
+            self.latex_export_button.disabled = True  # Disable LaTeX export on error
             with self.output_area:
                 self.output_area.clear_output()
                 traceback.print_exc()
@@ -563,23 +701,27 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 widgets.Box(
                     children=[self.analyze_button],
                     layout=widgets.Layout(margin="0 20px 0 0"),
-                ),  # Right margin
+                ),
                 widgets.Box(
                     children=[self.chat_formatting],
                     layout=widgets.Layout(margin="0 20px 0 0"),
-                ),  # Right margin
+                ),
                 widgets.Box(
                     children=[self.generate_response],
                     layout=widgets.Layout(margin="0 20px 0 0"),
-                ),  # Right margin
-                self.save_button,  # No margin needed for the last button
+                ),
+                widgets.Box(
+                    children=[self.save_button],
+                    layout=widgets.Layout(margin="0 20px 0 0"),
+                ),
+                self.latex_export_button,
             ],
             layout=widgets.Layout(
                 display="flex",
                 flex_flow="row wrap",
-                justify_content="flex-start",  # Align items to the start
+                justify_content="flex-start",
                 align_items="center",
-                width="auto",  # Changed from 100% to auto
+                width="auto",
             ),
         )
 
@@ -590,10 +732,9 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 inputs_layout,
                 buttons_layout,
                 self.output_area,
+                self.latex_output,  # Add LaTeX output area
             ],
-            layout=widgets.Layout(
-                width="100%", overflow="visible"
-            ),  # Allow overflow to be visible
+            layout=widgets.Layout(width="100%", overflow="visible"),
         )
         display(dashboard)
 
