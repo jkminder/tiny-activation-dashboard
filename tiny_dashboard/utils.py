@@ -132,65 +132,8 @@ class LazyReadDict:
     def __contains__(self, key):
         return key in self._keys
 
-
-def convert_to_latex(
-    tokens: list[str],
-    activations: th.Tensor,
-    feature_indices: list[int],
-    max_acts: dict[int] | None = None,
+def get_latex_preamble(
 ) -> str:
-    """Convert tokens and their activations to LaTeX format."""
-    if activations.dim() == 1:
-        activations = activations.unsqueeze(1)
-
-    # Handle normalization based on max_acts if provided
-    if max_acts is not None and len(feature_indices) > 0:
-        max_act = max_acts.get(feature_indices[0])
-        if max_act is not None:
-            norm_acts = activations / max_act
-            curr_max = activations.max().item()
-        else:
-            max_acts = activations.max(dim=0)[0]
-            norm_acts = activations / max_acts.unsqueeze(0)
-            curr_max = activations.max().item()
-    else:
-        max_acts = activations.max(dim=0)[0]
-        norm_acts = activations / max_acts.unsqueeze(0)
-        curr_max = activations.max().item()
-
-    # Convert activations to color specifications
-    colors = []
-    for i in range(len(tokens)):
-        opacity = min(100, max(0, int(norm_acts[i, 0].item() * 100)))
-        colors.append(f"red!{opacity}")
-
-    def latex_escape(s):
-        """Escape special characters and detect newlines"""
-        newline = "\n" in s
-        # First handle Unicode characters and special tokens
-        if s in [" ", "Ġ", "▁"]:
-            s = " "
-        else:
-            s = s.replace("▁", " ").replace("Ġ", " ")
-
-        # Handle LaTeX special characters
-        s = (
-            s.replace("\\", r"\textbackslash{}")
-            .replace("{", r"\{")
-            .replace("}", r"\}")
-            .replace("_", r"\_")
-            .replace("^", r"\^{}")
-            .replace("$", r"\$")
-            .replace("#", r"\#")
-            .replace("%", r"\%")
-            .replace("&", r"\&")
-            .replace("~", r"\~{}")
-            .replace("\n", r"\textbackslash n")
-        )
-
-        return s, newline
-
-    # Generate the preamble
     preamble = [
         "\\newcommand{\\hlbg}[2]{%",
         "  \\setlength{\\fboxsep}{0pt}%    no horizontal/vertical padding",
@@ -209,10 +152,60 @@ def convert_to_latex(
         "  breakatwhitespace=false,",
         "}",
     ]
+    return "\n".join(preamble)
+
+def convert_to_latex(
+    tokens: list[str],
+    feature_indices: list[int],
+    norm_acts: th.Tensor,
+    max_vals: list[float] = None,
+    global_max_act: bool = False,
+    return_preamble: bool = False,
+) -> str:
+    """Convert tokens and their activations to LaTeX format."""
+    # assert len(feature_indices) == 1, "Only one feature is supported"
+    # Convert activations to color specifications
+    colors = []
+    for i in range(len(tokens)):
+        opacity = min(100, max(0, int(norm_acts[0][i] * 100)))
+        colors.append(f"red!{opacity}")
+    if not global_max_act:
+        max_vals = [max(norm_acts[0]) * max_vals[0]]
+
+    if isinstance(max_vals[0], th.Tensor):
+        max_vals = [max_vals[0].item()]
+
+    if isinstance(norm_acts[0], th.Tensor):
+        norm_acts = [norm_acts[0].tolist()]
+
+    def latex_escape(s):
+        """Escape special characters and detect newlines"""
+        newline = "\n" in s
+        # First handle Unicode characters and special tokens
+        if s in [" ", "Ġ", "▁"]:
+            s = " "
+        else:
+            s = s.replace("Ġ", " ")
+            if s.startswith("_") or s.startswith("▁"):
+                s = " " + s[1:]
+
+        # Handle LaTeX special characters
+        s = (
+            s.replace("\\", r"\textbackslash{}")
+            .replace("{", r"\{")
+            .replace("}", r"\}")
+            .replace("_", r"\_")
+            .replace("^", r"\^{}")
+            .replace("$", r"\$")
+            .replace("#", r"\#")
+            .replace("%", r"\%")
+            .replace("&", r"\&")
+            .replace("~", r"\~{}")
+            .replace("\n", r"\textbackslash n")
+        )
+        return s, newline
 
     # Build the content
-    content_lines = []
-
     # Header with feature info
     header = (
         "  \\begin{tabular}{|p{0.95\\columnwidth}|}  % Fixed width relative to column width\n"
@@ -220,7 +213,7 @@ def convert_to_latex(
         "\\cellcolor{gray!20}\\begin{minipage}[t]{0.95\\columnwidth}   % Match width with tabular\n"
         "\\begin{lstlisting}[style=colorchars,aboveskip=-5pt,belowskip=0pt]\n"
         f"|\\textbf{{Feature {feature_indices[0]}}}|\n"
-        f"|Max Activation: {curr_max:.3f}|\\end{{lstlisting}}\n"
+        f"|Max Activation: {max_vals[0]:.3f}|\\end{{lstlisting}}\n"
         "\\end{minipage} \\\\\n"
     )
 
@@ -242,5 +235,8 @@ def convert_to_latex(
     token_content += "\\end{minipage} \\\\ \\hline\n"
     token_content += "\\end{tabular}"
 
+    out = {"content": header + token_content}
     # Combine all parts
-    return {"preamble": "\n".join(preamble), "content": header + token_content}
+    if return_preamble:
+        out["preamble"] = get_latex_preamble()
+    return out

@@ -44,7 +44,7 @@ def activation_visualization(
     """
 
     # Create HTML with highlighted tokens
-    html, max_acts_str = create_highlighted_tokens_html(
+    html, max_acts_str, norm_acts, max_vals = create_highlighted_tokens_html(
         tokens=tokens,
         activations=activations,
         tokenizer=tokenizer,
@@ -55,7 +55,7 @@ def activation_visualization(
         activation_names=activation_names,
         tooltip_features=tooltip_features,
         highlight_features_in_tooltip=highlight_features_in_tooltip,
-        return_max_acts_str=True,
+        return_stats=True,
     )
     html = create_example_html(max_acts_str, html, static=True)
     return create_base_html(title, html)

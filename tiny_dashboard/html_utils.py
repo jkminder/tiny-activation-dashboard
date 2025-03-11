@@ -126,8 +126,8 @@ def create_highlighted_tokens_html(
     color2: tuple[int, int, int] = None,
     relative_normalization: bool = True,  # False = normalize against global max
     activation_names: list[str] = None,
-    return_max_acts_str: bool = False,
     highlight_features_in_tooltip: bool = True,
+    return_stats: bool = False,
 ) -> str | tuple[str, str]:
     """Create HTML with highlighted tokens based on activation values.
 
@@ -240,7 +240,7 @@ def create_highlighted_tokens_html(
         )
 
     html = "".join(html_parts)
-    if return_max_acts_str:
+    if return_stats:
         max_acts_str = "<br>".join(
             f"{activation_names[idx]}: {mv.item():.3f}"
             for idx, mv in enumerate(
@@ -255,5 +255,5 @@ def create_highlighted_tokens_html(
             if feat in highlight_features:
                 continue
             max_acts_str += f"<br>{activation_names[feat]}: {max_val:.3f}"
-        return html, "<br>" + max_acts_str
+        return html, "<br>" + max_acts_str, norm_acts, max_vals
     return html

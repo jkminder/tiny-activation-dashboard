@@ -20,6 +20,8 @@ from .utils import (
     sanitize_token,
     LazyReadDict,
     convert_to_latex,
+    get_latex_preamble,
+    sanitize_html_content,
 )
 from .html_utils import (
     create_example_html,
@@ -142,6 +144,7 @@ class OfflineFeatureCentricDashboard:
         max_idx: int,
         show_full: bool = False,
         min_max_act: float = None,
+        return_stats: bool = False,
     ) -> str:
         act_tensor = th.tensor(activations)
 
@@ -160,20 +163,14 @@ class OfflineFeatureCentricDashboard:
             color1=(255, 0, 0),  # Red color
             activation_names=["Activation"],
             min_max_act=min_max_act,
+            return_stats=return_stats,
         )
 
     def generate_html(self, feature_idx: int, use_absolute_max: bool = False) -> str:
         examples = self.max_activation_examples[feature_idx]
 
         # Generate LaTeX preamble once for the feature
-        dummy_tokens = examples[0][1]
-        dummy_acts = th.tensor(examples[0][2]).unsqueeze(1)
-        latex_preamble = convert_to_latex(
-            tokens=dummy_tokens,
-            activations=dummy_acts,
-            feature_indices=[feature_idx],
-            max_acts={feature_idx: examples[0][0]} if use_absolute_max else None,
-        )["preamble"]
+        latex_preamble = get_latex_preamble()
 
         # Add JavaScript for clipboard operations - using a more reliable method
         clipboard_js = """
@@ -275,17 +272,19 @@ class OfflineFeatureCentricDashboard:
             collapsed_html = self._create_html_highlight(
                 tokens, token_acts, max_idx, False, min_max_act
             )
-            full_html = self._create_html_highlight(
-                tokens, token_acts, max_idx, True, min_max_act
+            full_html, max_acts_str, norm_acts, max_vals = self._create_html_highlight(
+                tokens, token_acts, max_idx, True, min_max_act, return_stats=True
             )
 
             # Generate LaTeX for this example
             act_tensor = th.tensor(token_acts).unsqueeze(1)
             latex_content = convert_to_latex(
                 tokens=tokens,
-                activations=act_tensor,
                 feature_indices=[feature_idx],
-                max_acts={feature_idx: examples[0][0]} if use_absolute_max else None,
+                max_vals=max_vals,
+                norm_acts=norm_acts,
+                global_max_act=use_absolute_max,
+                return_preamble=False
             )["content"]
             
             
@@ -295,7 +294,7 @@ class OfflineFeatureCentricDashboard:
             # Create a standalone button that will be positioned absolutely
             latex_button = f"""
             <button class="latex-button example-latex-button" data-target="{example_id}" onclick="copyToClipboard('{example_id}')">Copy LaTeX</button>
-            <div id="{example_id}" style="display:none;">{latex_content}</div>
+            <div id="{example_id}" style="display:none;">{sanitize_html_content(latex_content)}</div>
             """
 
             # Create example HTML
@@ -395,7 +394,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         """Generate model's response using the instruct model"""
         if self.model is None:
             raise ValueError("Model is not set")
-        with self.model.generate(text, max_new_tokens=512):
+        with self.model.generate(text, max_new_tokens=256):
             output = self.model.generator.output.save()
         return self.tokenizer.decode(output[0])
 
@@ -504,7 +503,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
         all_feature_indices: list[int],
         highlight_features: list[int],
         tooltip_features: list[int],
-        return_max_acts: bool = False,
+        return_stats: bool = False,
     ) -> str | tuple[str, str]:
         """Create HTML with highlighted tokens based on activation values"""
         # Map feature indices to their positions in the activations tensor
@@ -548,7 +547,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
             color1=(255, 0, 0),
             color2=self.second_highlight_color,
             activation_names=activation_names,
-            return_max_acts_str=return_max_acts,
+            return_stats=return_stats,
             min_max_act=min_max_act,
         )
 
@@ -603,21 +602,23 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 self.output_area.clear_output()
 
                 # Get HTML content and max activations string
-                html_content, max_acts_str = self._create_html_highlight(
+                html_content, max_acts_str, norm_acts, max_vals = self._create_html_highlight(
                     tokens,
                     activations,
                     feature_indices,
                     highlight_features,
                     tooltip_features,
-                    return_max_acts=True,
+                    return_stats=True,
                 )
 
                 # Generate LaTeX for this example
                 latex_output = convert_to_latex(
                     tokens,
-                    activations,
                     feature_indices,
-                    max_acts=self.max_acts,
+                    max_vals=max_vals, 
+                    norm_acts=norm_acts,
+                    global_max_act = False, # Get max from norm_acts
+                    return_preamble=True
                 )
                 
                 # Create unique ID for this analysis
@@ -626,7 +627,7 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 # Create LaTeX button for the example
                 latex_button = f"""
                 <button class="latex-button example-latex-button" data-target="{example_id}" onclick="copyToClipboard('{example_id}')">Copy LaTeX</button>
-                <div id="{example_id}" style="display:none;">{latex_output['content']}</div>
+                <div id="{example_id}" style="display:none;">{sanitize_html_content(latex_output['content'])}</div>
                 """
 
                 # Create LaTeX preamble button
@@ -634,10 +635,9 @@ class AbstractOnlineFeatureCentricDashboard(ABC):
                 preamble_button_html = f"""
                 <div class="latex-buttons-container">
                     <button class="latex-button" data-target="{preamble_id}" onclick="copyToClipboard('{preamble_id}')">Copy LaTeX Preamble</button>
-                    <div id="{preamble_id}" style="display:none;">{latex_output['preamble']}</div>
+                    <div id="{preamble_id}" style="display:none;">{sanitize_html_content(latex_output['preamble'])}</div>
                 </div>
                 """
-
                 # Create example HTML with LaTeX button
                 example_html = create_example_html(
                     max_acts_str, html_content, static=True, latex_button=latex_button
