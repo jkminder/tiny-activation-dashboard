@@ -110,13 +110,16 @@ def create_token_html(
         },
     )
 
+
 def create_highlighted_tokens_html(
     tokens: list[str],
     activations: th.Tensor,
     tokenizer,
     *,
     # Feature selection
-    highlight_features: list[int] | int | None = None,  # Indices into activations tensor
+    highlight_features: (
+        list[int] | int | None
+    ) = None,  # Indices into activations tensor
     tooltip_features: list[int] | int | None = None,  # None = show all features
     # Visualization options
     min_max_act: float | None = None,
@@ -183,7 +186,7 @@ def create_highlighted_tokens_html(
     # Get activation values for highlighted features
     highlight_acts = [activations[:, idx] for idx in highlight_features]
 
-    # Handle normalization - now supports negative values
+    # Handle normalization
     if min_max_act is None:
         if relative_normalization:
             max_vals = [acts[~acts.isnan()].abs().max() for acts in highlight_acts]
@@ -204,9 +207,7 @@ def create_highlighted_tokens_html(
         # Generate colors for token
         token_colors = []
         for norm_act, positive_color, negative_color in zip(
-            norm_acts, 
-            [color1, color2], 
-            [color1_negative, color2_negative]
+            norm_acts, [color1, color2], [color1_negative, color2_negative]
         ):
             act_val = norm_act[i].item() if not (norm_act[i].isnan()) else 0
             if abs(act_val) > 1:
@@ -218,7 +219,7 @@ def create_highlighted_tokens_html(
                     f"Warning:\nGot an activation > max normalization value ({act_val}), clamping to ±1"
                 )
                 act_val = 1 if act_val > 0 else -1
-            
+
             # Choose color based on sign of activation
             if act_val >= 0:
                 r, g, b = positive_color
@@ -226,7 +227,7 @@ def create_highlighted_tokens_html(
             else:
                 r, g, b = negative_color
                 intensity = abs(act_val)
-            
+
             token_colors.append(f"rgba({r}, {g}, {b}, {intensity:.3f})")
 
         # If only one feature, duplicate the color
