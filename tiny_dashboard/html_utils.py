@@ -117,14 +117,18 @@ def create_highlighted_tokens_html(
     tokenizer,
     *,
     # Feature selection
-    highlight_features: list[int] | int = None,  # Indices into activations tensor
+    highlight_features: (
+        list[int] | int | None
+    ) = None,  # Indices into activations tensor
     tooltip_features: list[int] | int | None = None,  # None = show all features
     # Visualization options
-    min_max_act: float = None,
+    min_max_act: float | None = None,
     color1: tuple[int, int, int] = (255, 0, 0),
-    color2: tuple[int, int, int] = None,
+    color1_negative: tuple[int, int, int] = (0, 0, 255),
+    color2: tuple[int, int, int] | None = None,
+    color2_negative: tuple[int, int, int] | None = None,
     relative_normalization: bool = True,  # False = normalize against global max
-    activation_names: list[str] = None,
+    activation_names: list[str] | None = None,
     return_max_acts_str: bool = False,
     highlight_features_in_tooltip: bool = True,
 ) -> str | tuple[str, str]:
@@ -132,13 +136,15 @@ def create_highlighted_tokens_html(
 
     Args:
         tokens: List of tokens to display
-        activations: Tensor of shape [seq_len, num_features] or [seq_len] of non-negative floats.
+        activations: Tensor of shape [seq_len, num_features] or [seq_len] of floats.
             Activations can be 'nan' for tokens that should not be highlighted.
         tokenizer: Tokenizer for getting token IDs
         highlight_features: Which features to highlight (max 2)
         tooltip_features: Which features to show in tooltip (None = all)
         color1: RGB color tuple for primary feature
+        color1_negative: RGB color tuple for negative primary feature
         color2: RGB color tuple for secondary feature (None = same as color1)
+        color2_negative: RGB color tuple for negative secondary feature
         relative_normalization: If True, normalize each feature independently
         activation_names: List of names for each feature (optional)
         return_max_acts_str: If True, return a string with the max activation values
@@ -168,6 +174,8 @@ def create_highlighted_tokens_html(
         activation_names = [f"Feature {i}" for i in list(range(activations.shape[1]))]
     if color2 is None:
         color2 = color1
+    if color2_negative is None:
+        color2_negative = color1_negative
     if isinstance(tooltip_features, int):
         tooltip_features = [tooltip_features]
     if tooltip_features is None:
@@ -177,15 +185,13 @@ def create_highlighted_tokens_html(
 
     # Get activation values for highlighted features
     highlight_acts = [activations[:, idx] for idx in highlight_features]
-    if any((acts < 0).any() for acts in highlight_acts):
-        raise ValueError("Activations must be non-negative floats")
 
     # Handle normalization
     if min_max_act is None:
         if relative_normalization:
-            max_vals = [acts[~acts.isnan()].max() for acts in highlight_acts]
+            max_vals = [acts[~acts.isnan()].abs().max() for acts in highlight_acts]
         else:
-            max_val = max(acts[~acts.isnan()].max() for acts in highlight_acts)
+            max_val = max(acts[~acts.isnan()].abs().max() for acts in highlight_acts)
             max_vals = [max_val] * len(highlight_acts)
     else:
         max_vals = [min_max_act] * len(highlight_acts)
@@ -200,17 +206,28 @@ def create_highlighted_tokens_html(
     for i, (san_token, token) in enumerate(zip(sanitized_tokens, tokens)):
         # Generate colors for token
         token_colors = []
-        for norm_act, (r, g, b) in zip(norm_acts, [color1, color2]):
-            intensity = norm_act[i].item() if not (norm_act[i].isnan()) else 0
-            if intensity > 1:
+        for norm_act, positive_color, negative_color in zip(
+            norm_acts, [color1, color2], [color1_negative, color2_negative]
+        ):
+            act_val = norm_act[i].item() if not (norm_act[i].isnan()) else 0
+            if abs(act_val) > 1:
                 if min_max_act is None:
                     raise RuntimeError(
-                        "Got an intensity > 1 but no min_max_act was not provided"
+                        "Got an activation > max normalization value but no min_max_act was provided"
                     )
                 warnings.warn(
-                    "Warning:\nGot an intensity > 1, which means acts>min_max_act. Clamping to 1"
+                    f"Warning:\nGot an activation > max normalization value ({act_val}), clamping to ±1"
                 )
-                intensity = 1
+                act_val = 1 if act_val > 0 else -1
+
+            # Choose color based on sign of activation
+            if act_val >= 0:
+                r, g, b = positive_color
+                intensity = act_val
+            else:
+                r, g, b = negative_color
+                intensity = abs(act_val)
+
             token_colors.append(f"rgba({r}, {g}, {b}, {intensity:.3f})")
 
         # If only one feature, duplicate the color
