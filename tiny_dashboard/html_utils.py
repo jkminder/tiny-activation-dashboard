@@ -123,11 +123,13 @@ def create_highlighted_tokens_html(
     tooltip_features: list[int] | int | None = None,  # None = show all features
     # Visualization options
     min_max_act: float | None = None,
+    min_max_act_negative: float | None = None,
     color1: tuple[int, int, int] = (255, 0, 0),
     color1_negative: tuple[int, int, int] = (0, 0, 255),
     color2: tuple[int, int, int] | None = None,
     color2_negative: tuple[int, int, int] | None = None,
     relative_normalization: bool = True,  # False = normalize against global max
+    separate_positive_negative_normalization: bool = False,  # If True, normalize positive and negative values separately
     activation_names: list[str] | None = None,
     return_max_acts_str: bool = False,
     highlight_features_in_tooltip: bool = True,
@@ -141,10 +143,13 @@ def create_highlighted_tokens_html(
         tokenizer: Tokenizer for getting token IDs
         highlight_features: Which features to highlight (max 2)
         tooltip_features: Which features to show in tooltip (None = all)
+        min_max_act: Maximum absolute value for normalization
+        min_max_act_negative: Maximum absolute value for negative normalization (if None or separate_positive_negative_normalization is False, min_max_act is used)
         color1: RGB color tuple for primary feature
         color1_negative: RGB color tuple for negative primary feature
         color2: RGB color tuple for secondary feature (None = same as color1)
         color2_negative: RGB color tuple for negative secondary feature
+        separate_positive_negative_normalization: If True, normalize positive and negative values separately
         relative_normalization: If True, normalize each feature independently
         activation_names: List of names for each feature (optional)
         return_max_acts_str: If True, return a string with the max activation values
@@ -185,19 +190,54 @@ def create_highlighted_tokens_html(
 
     # Get activation values for highlighted features
     highlight_acts = [activations[:, idx] for idx in highlight_features]
-
     # Handle normalization
     if min_max_act is None:
         if relative_normalization:
-            max_vals = [acts[~acts.isnan()].abs().max() for acts in highlight_acts]
+            if separate_positive_negative_normalization:
+                # Separate normalization for positive and negative values
+                max_vals_pos = [acts[~acts.isnan() & (acts > 0)].max() if (acts[~acts.isnan() & (acts > 0)]).numel() > 0 else th.tensor(1.0) for acts in highlight_acts]
+                max_vals_neg = [acts[~acts.isnan() & (acts < 0)].abs().max() if (acts[~acts.isnan() & (acts < 0)]).numel() > 0 else th.tensor(1.0) for acts in highlight_acts]
+            else:
+                # Standard normalization using absolute maximum
+                max_vals = [acts[~acts.isnan()].abs().max() for acts in highlight_acts]
         else:
-            max_val = max(acts[~acts.isnan()].abs().max() for acts in highlight_acts)
-            max_vals = [max_val] * len(highlight_acts)
+            if separate_positive_negative_normalization:
+                # Global positive and negative normalization
+                all_acts = th.cat([acts[~acts.isnan()] for acts in highlight_acts])
+                max_val_pos = all_acts[all_acts > 0].max() if (all_acts > 0).any() else th.tensor(1.0)
+                max_val_neg = all_acts[all_acts < 0].abs().max() if (all_acts < 0).any() else th.tensor(1.0)
+                max_vals_pos = [max_val_pos] * len(highlight_acts)
+                max_vals_neg = [max_val_neg] * len(highlight_acts)
+            else:
+                # Standard global normalization
+                max_val = max(acts[~acts.isnan()].abs().max() for acts in highlight_acts)
+                max_vals = [max_val] * len(highlight_acts)
     else:
-        max_vals = [min_max_act] * len(highlight_acts)
-    norm_acts = [
-        acts / (max_val + 1e-6) for acts, max_val in zip(highlight_acts, max_vals)
-    ]
+        if separate_positive_negative_normalization:
+            if min_max_act_negative is not None:
+                max_vals_pos = [min_max_act] * len(highlight_acts)
+                max_vals_neg = [min_max_act_negative] * len(highlight_acts)
+            else:
+                max_vals_pos = [min_max_act] * len(highlight_acts)
+                max_vals_neg = [min_max_act] * len(highlight_acts)
+        else:
+            max_vals = [min_max_act] * len(highlight_acts)
+
+    # Normalize activations
+    if separate_positive_negative_normalization:
+        norm_acts = []
+        for acts, max_pos, max_neg in zip(highlight_acts, max_vals_pos, max_vals_neg):
+            norm_act = th.zeros_like(acts)
+            pos_mask = acts > 0
+            neg_mask = acts < 0
+            norm_act[pos_mask] = acts[pos_mask] / (max_pos + 1e-6)
+            norm_act[neg_mask] = acts[neg_mask] / (max_neg + 1e-6)
+            norm_act[acts.isnan()] = acts[acts.isnan()]  # Preserve NaN values
+            norm_acts.append(norm_act)
+    else:
+        norm_acts = [
+            acts / (max_val + 1e-6) for acts, max_val in zip(highlight_acts, max_vals)
+        ]
 
     # Generate HTML for each token
     html_parts = []
